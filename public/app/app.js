@@ -1,7 +1,8 @@
 // public/app/app.js
 // -----------------------------------------------------------------------------
-// UI 初期化 + データローダ + /estimate 呼び出し
-// 必須入力の自動切替・送信後スクロール・形式差（住所/沿線）に両対応
+// 入力の必須が揃ったら自動で /estimate を呼び、中央値＋レンジを即時表示
+// 補正（構造/所在階/採光/角地/徒歩）を入れるたびに再計算
+// 「査定を送信」はメール送信用（画面は即時表示のまま）
 // -----------------------------------------------------------------------------
 
 const PREF = "hiroshima";
@@ -19,15 +20,13 @@ const els = {
   totalFloors: null, floor: null, aspect: null, isCorner: null,
 
   email: null, submitBtn: null,
-  resultPrice: null, resultCard: null,
+  resultMin: null, resultMid: null, resultMax: null, resultCard: null,
 
   landReq: null, bldgReq: null, buildYearReq: null
 };
 
 function $(id){ return document.getElementById(id); }
-
 async function getJSON(url){ const r=await fetch(url,{cache:"no-cache"}); if(!r.ok) throw new Error(url); return r.json(); }
-
 function fillOptions(select, items, {valueKey="value", labelKey="label", placeholder}={}){
   select.innerHTML = "";
   if (placeholder){
@@ -40,7 +39,6 @@ function fillOptions(select, items, {valueKey="value", labelKey="label", placeho
     const o = document.createElement("option"); o.value=String(v); o.textContent=String(l); select.appendChild(o);
   });
 }
-
 function range(a,b){ const out=[]; for(let i=a;i<=b;i++) out.push(i); return out; }
 
 // ---------- 住所 ----------
@@ -54,8 +52,8 @@ function normalizeCityIndex(idx){
       if(label&&(value||value===0)) out.push({label, value:String(value)});
     }); return out;
   }
-  const arr=(Array.isArray(idx.cities)&&idx.cities) || (Array.isArray(idx.wards)&&idx.wards) || (Array.isArray(idx.list)&&idx.list) || null;
-  if(arr){
+  const arr=(idx.cities||idx.wards||idx.list);
+  if(Array.isArray(arr)){
     arr.forEach(it=>{
       const label=it?.name_ja||it?.name||it?.label||it?.title;
       const value=it?.code??it?.value??it?.id;
@@ -88,6 +86,7 @@ async function loadCities(){
     const list = normalizeTownsFile(townsRaw);
     els._townList = list;
     fillOptions(els.town, list.map(t=>t.name), {placeholder:"町名を選択"});
+    debouncedCompute();
   };
   els.town.onchange = ()=>{
     const list = els._townList||[]; const t = list.find(x=>x.name===els.town.value);
@@ -96,7 +95,9 @@ async function loadCities(){
       const label=/丁目$/.test(c)?c:`${c}丁目`; const value=String(c).replace(/丁目$/u,"");
       return {value,label};
     }), {valueKey:"value", labelKey:"label", placeholder:"丁目を選択"});
+    debouncedCompute();
   };
+  els.chome.onchange = debouncedCompute;
 }
 
 // ---------- 鉄道 ----------
@@ -136,10 +137,12 @@ async function loadLines(){
     const raw = await getJSON(`./datasets/rail/${PREF}/${encodeURIComponent(file)}`);
     const stations = normalizeStations(raw);
     fillOptions(els.station, stations, {placeholder:"駅を選択"});
+    debouncedCompute();
   };
+  els.station.onchange = debouncedCompute;
 }
 
-// ---------- 必須制御 ----------
+// ---------- 必須/補正 ----------
 function normalizeTypeName(s){
   const t=String(s||"").trim();
   if(!t) return "";
@@ -148,48 +151,27 @@ function normalizeTypeName(s){
   if(/マンション/.test(t)) return "mansion";
   if(/(ビル|売ビル)/.test(t)) return "building";
   if(/(アパート|共同住宅)/.test(t)) return "apartment";
-  return t.toLowerCase(); // すでに英語ならそのまま
+  return t.toLowerCase();
 }
-function setDisabled(el, disabled){
-  el.disabled = !!disabled;
-  el.classList.toggle("disabled", !!disabled);
-}
+function setDisabled(el, disabled){ el.disabled=!!disabled; el.classList.toggle("disabled",!!disabled); }
 function setReqSpan(span, on){ span.textContent = on ? "（必須）" : ""; }
 function updateRequiredUI(){
   const type = normalizeTypeName(els.propertyType.value);
-
-  // 既定
   let needLand=false, needBldg=false, needYear=false;
-
   if(type==="land"){ needLand=true; needBldg=false; needYear=false; }
   else if(type==="house"){ needLand=true; needBldg=true; needYear=true; }
   else if(["mansion","building","apartment"].includes(type)){ needLand=false; needBldg=true; needYear=true; }
-
-  // ラベル反映
   setReqSpan(els.landReq, needLand);
   setReqSpan(els.bldgReq, needBldg);
   setReqSpan(els.buildYearReq, needYear);
-
-  // 入力可否
-  setDisabled(els.landArea, !needLand && type!=="house");      // house以外で不要→disable
-  setDisabled(els.buildingArea, !needBldg && type!=="house");  // house以外で不要→disable
+  setDisabled(els.landArea, !needLand && type!=="house");
+  setDisabled(els.buildingArea, !needBldg && type!=="house");
   setDisabled(els.buildYear, !needYear && type==="land");
 }
 
-// ---------- 送信 ----------
-function validateMinimal(){
-  const type = normalizeTypeName(els.propertyType.value);
-  if(!type){ alert("種目を選択してください。"); return false; }
-  if(type==="land" && Number(els.landArea.value||0)<=0){ alert("土地面積を入力してください。"); return false; }
-  if(type!=="land" && Number(els.buildingArea.value||0)<=0){ alert("建物（専有）面積を入力してください。"); return false; }
-  if(type!=="land" && !els.buildYear.value){ alert("築年を選択してください。"); return false; }
-  return true;
-}
-
-async function sendEstimate(){
-  if(!validateMinimal()) return;
-
-  const payload = {
+// ---------- 送信/自動査定 ----------
+function buildPayload(){
+  return {
     userType: document.querySelector('input[name="userType"]:checked')?.value || "personal",
 
     prefecture: PREF,
@@ -218,19 +200,66 @@ async function sendEstimate(){
 
     email: els.email.value || ""
   };
+}
 
-  const res = await fetch("/estimate", { method:"POST", headers:{ "content-type":"application/json" }, body: JSON.stringify(payload) });
-  const data = await res.json().catch(()=>({}));
+function hasRequired(){
+  return (
+    !!els.city.value &&
+    !!els.town.value &&
+    !!els.line.value &&
+    !!els.station.value &&
+    !!els.propertyType.value &&
+    !!els.buildYear.value
+  );
+}
 
-  if(!res.ok || !data?.ok){
-    console.error("estimate error:", data);
-    alert("査定に失敗しました。入力内容をご確認ください。");
+async function computeEstimate(){
+  if(!hasRequired()){
+    // 足りない間は未表示に戻す
+    els.resultMin.textContent = "—";
+    els.resultMid.textContent = "—";
+    els.resultMax.textContent = "—";
     return;
   }
+  try{
+    const res = await fetch("/estimate", {
+      method:"POST",
+      headers:{ "content-type":"application/json" },
+      body: JSON.stringify(buildPayload())
+    });
+    const data = await res.json().catch(()=>({}));
+    if(!res.ok || !data?.ok) throw new Error("estimate failed");
+    els.resultMin.textContent = Number(data.priceMinMan||0).toLocaleString();
+    els.resultMid.textContent = Number(data.priceMan||0).toLocaleString();
+    els.resultMax.textContent = Number(data.priceMaxMan||0).toLocaleString();
+  }catch(e){
+    console.error("auto estimate error", e);
+  }
+}
 
-  els.resultPrice.textContent = `${Number(data.priceMan||0).toLocaleString()} 万円`;
-  // 結果へオートスクロール
-  els.resultCard.scrollIntoView({ behavior:"smooth", block:"start" });
+let _t=null;
+function debouncedCompute(){ clearTimeout(_t); _t=setTimeout(computeEstimate, 350); }
+
+// 手動送信（メール獲得）
+async function sendEstimate(){
+  try{
+    const res = await fetch("/estimate", {
+      method:"POST",
+      headers:{ "content-type":"application/json" },
+      body: JSON.stringify(buildPayload())
+    });
+    const data = await res.json().catch(()=>({}));
+    if(!res.ok || !data?.ok) throw new Error("estimate failed");
+    // 画面も更新しておく
+    els.resultMin.textContent = Number(data.priceMinMan||0).toLocaleString();
+    els.resultMid.textContent = Number(data.priceMan||0).toLocaleString();
+    els.resultMax.textContent = Number(data.priceMaxMan||0).toLocaleString();
+    els.resultCard.scrollIntoView({ behavior:"smooth", block:"start" });
+    alert("査定結果を送信しました。（メールをご確認ください）");
+  }catch(e){
+    console.error("estimate error:", e);
+    alert("送信に失敗しました。入力内容をご確認ください。");
+  }
 }
 
 // ---------- 初期化 ----------
@@ -256,19 +285,29 @@ async function bootstrap(){
   els.totalFloors=$("totalFloors"); els.floor=$("floor"); els.aspect=$("aspect"); els.isCorner=$("isCorner");
 
   els.email=$("email"); els.submitBtn=$("submitBtn");
-  els.resultPrice=$("resultPrice"); els.resultCard=$("resultCard");
+  els.resultMin=$("resultMin"); els.resultMid=$("resultMid"); els.resultMax=$("resultMax"); els.resultCard=$("resultCard");
 
   els.landReq=$("landReq"); els.bldgReq=$("bldgReq"); els.buildYearReq=$("buildYearReq");
 
   // init UI
   initWalk(); initFloors(); initYears(); initUserTypeToggle();
   updateRequiredUI();
-  els.propertyType.addEventListener("change", updateRequiredUI);
 
   // load data
   await Promise.allSettled([loadCities(), loadLines()]);
 
-  // actions
+  // 監視（必須＋補正）
+  [
+    els.city, els.town, els.chome, els.line, els.station, els.walk,
+    els.propertyType, els.areaUnit, els.landArea, els.buildingArea,
+    els.buildYear, els.floorPlan, els.structure, els.totalFloors,
+    els.floor, els.aspect, els.isCorner
+  ].forEach(el=>{
+    if(!el) return;
+    el.addEventListener("change", ()=>{ if(el===els.propertyType) updateRequiredUI(); debouncedCompute(); });
+    if(el.tagName==="INPUT") el.addEventListener("input", debouncedCompute);
+  });
+
   els.submitBtn.addEventListener("click", sendEstimate);
 }
 document.addEventListener("DOMContentLoaded", bootstrap);
