@@ -10,8 +10,8 @@
   --danger:#dc2626;
 }
 
-/* ★ 全体の文字を約1.5倍（基準 24px） */
-html{font-size:24px}
+/* ★ 端末幅に応じた可変フォント（最小16px〜最大22px） */
+html{font-size:clamp(16px, 1.2vw + 12px, 22px)}
 *{box-sizing:border-box}
 body{
   margin:0;padding:0;background:var(--bg);color:var(--text);
@@ -20,7 +20,7 @@ body{
 }
 
 header{padding:20px}
-h1{margin:0;font-size:1.4rem;font-weight:700}
+h1{margin:0;font-size:1.35rem;font-weight:700}
 h2{margin:0 0 10px 0;font-size:1.1rem}
 
 main{max-width:1040px;margin:0 auto;padding:0 16px 48px}
@@ -35,7 +35,7 @@ main{max-width:1040px;margin:0 auto;padding:0 16px 48px}
   display:grid;grid-template-columns:repeat(12,1fr);gap:12px;
 }
 .card h2{grid-column:1/-1}
-.card > label,.card > .inline,.card > .notices{grid-column:span 4}
+.card > label,.card > .inline,.card > .notices,.card > .user-type-row{grid-column:span 4}
 .card > .span-8{grid-column:span 8}
 .card > .span-12{grid-column:1/-1}
 
@@ -44,14 +44,22 @@ main{max-width:1040px;margin:0 auto;padding:0 16px 48px}
   width:100%;padding:10px 12px;border:1px solid var(--border);border-radius:10px;background:#fff;outline:none
 }
 .card input:focus,.card select:focus{border-color:var(--brand);box-shadow:0 0 0 3px var(--ring)}
+.card input[type="radio"]{width:1.1em;height:1.1em;accent-color:var(--brand)}
 
-.inline{display:flex;gap:12px;align-items:center;flex-wrap:wrap}
-.inline-note{margin-left:.4em}
-.small{color:var(--muted);font-size:.75rem}
+.inline{display:flex;gap:12px;align-items:center}
+.small{color:var(--muted);font-size:.8rem}
 
+/* ★ ラジオ+注意書きの自然な並び */
+.user-type-row{
+  display:flex;gap:16px;align-items:center;flex-wrap:wrap;justify-content:space-between
+}
+.user-type-options{display:flex;gap:24px;align-items:center;flex-wrap:wrap}
+.user-type-note{margin-left:auto}
+
+/* 必須表示 */
 .required{color:var(--danger);font-weight:600}
 
-/* 角地：チェックボックス+ラベルでずれない */
+/* 角地：チェックボックス+ラベル一体 */
 .checkbox{display:inline-flex;align-items:center;gap:8px;user-select:none}
 .checkbox input{width:auto;margin:0}
 
@@ -62,11 +70,11 @@ main{max-width:1040px;margin:0 auto;padding:0 16px 48px}
   padding:10px 14px;border-radius:12px;background:#f3f6ff;color:#0f172a;
 }
 
-/* 一行・全幅のプライマリボタン（文字約2倍） */
+/* 一行・全幅のプライマリボタン（大きめ） */
 .btn-primary{
   width:100%;height:64px;
   border:0;border-radius:14px;
-  color:#fff;font-weight:800;font-size:1.4rem;letter-spacing:.02em;
+  color:#fff;font-weight:800;font-size:1.25rem;letter-spacing:.02em;
   background:linear-gradient(90deg,var(--brand),var(--brand2));
   box-shadow:0 10px 24px rgb(37 99 235 / 22%);
   cursor:pointer;
@@ -74,13 +82,15 @@ main{max-width:1040px;margin:0 auto;padding:0 16px 48px}
 .btn-primary:active{transform:translateY(1px)}
 .btn-primary:focus{outline:none;box-shadow:0 0 0 4px var(--ring)}
 
-/* 注意書き：ボタン直下／1行表示（横スク可能） */
+/* 注意書き：1行表示（横スク可能） */
 .notices{display:grid;gap:4px}
-.notice{margin:0;color:var(--muted);font-size:.75rem}
+.notice{margin:0;color:var(--muted);font-size:.8rem}
 .nowrap{white-space:nowrap;overflow-x:auto;-webkit-overflow-scrolling:touch}
 
 /* モバイル */
 @media (max-width:720px){
   .card{grid-template-columns:1fr}
-  .card > label,.card > .inline,.card > .notices{grid-column:1/-1}
+  .card > label,.card > .inline,.card > .notices,.card > .user-type-row{grid-column:1/-1}
+  .user-type-row{flex-direction:column;align-items:flex-start}
+  .user-type-note{margin-left:0}
 }
