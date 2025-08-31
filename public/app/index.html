@@ -1,110 +1,111 @@
-// 個人/法人の切り替え
-document.querySelectorAll("input[name=userType]").forEach(radio => {
-  radio.addEventListener("change", () => {
-    const businessFields = document.getElementById("businessFields");
-    if (document.querySelector("input[name=userType]:checked").value === "business") {
-      businessFields.style.display = "block";
-    } else {
-      businessFields.style.display = "none";
-    }
-  });
-});
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>不動産 簡易査定</title>
+  <link rel="stylesheet" href="style.css">
+</head>
+<body>
+  <header>
+    <h1>不動産 簡易査定フォーム</h1>
+  </header>
 
-// 徒歩分のプルダウン生成
-const walkSelect = document.getElementById("walkSelect");
-for (let i = 1; i <= 60; i++) {
-  const opt = document.createElement("option");
-  opt.value = i;
-  opt.textContent = i + "分";
-  walkSelect.appendChild(opt);
-}
+  <main>
+    <!-- ご利用の方 -->
+    <section class="card">
+      <h2>ご利用の方</h2>
+      <label><input type="radio" name="userType" value="personal" checked> 個人</label>
+      <label><input type="radio" name="userType" value="business"> 個人事業主または法人</label>
+      <div id="businessFields" style="display:none;">
+        <label>会社名 <input type="text" id="companyName"></label>
+        <label>連絡先（電話）<input type="tel" id="phone"></label>
+      </div>
+    </section>
 
-// エリアデータロード
-async function loadAddress() {
-  try {
-    const res = await fetch("/datasets/address");
-    const data = await res.json(); // { cityCode: { name, towns: {townCode: {name, chomes:[]}} } }
-    const citySelect = document.getElementById("citySelect");
-    citySelect.innerHTML = '<option value="">選択してください</option>';
-    Object.entries(data).forEach(([cityCode, cityObj]) => {
-      const opt = document.createElement("option");
-      opt.value = cityCode;
-      opt.textContent = cityObj.name;
-      citySelect.appendChild(opt);
-    });
+    <!-- エリア -->
+    <section class="card">
+      <h2>エリア</h2>
+      <label>都道府県 <input type="text" value="広島県" disabled></label>
+      <label>市区町村
+        <select id="citySelect">
+          <option value="">選択してください</option>
+        </select>
+      </label>
+      <label>町名
+        <select id="townSelect">
+          <option value="">選択してください</option>
+        </select>
+      </label>
+      <label>丁目
+        <select id="chomeSelect">
+          <option value="">選択してください</option>
+        </select>
+      </label>
+    </section>
 
-    citySelect.addEventListener("change", () => {
-      const townSelect = document.getElementById("townSelect");
-      townSelect.innerHTML = '<option value="">選択してください</option>';
-      const chomeSelect = document.getElementById("chomeSelect");
-      chomeSelect.innerHTML = '<option value="">選択してください</option>';
+    <!-- 最寄り駅 -->
+    <section class="card">
+      <h2>最寄り駅</h2>
+      <label>路線
+        <select id="lineSelect">
+          <option value="">選択してください</option>
+        </select>
+      </label>
+      <label>駅
+        <select id="stationSelect">
+          <option value="">選択してください</option>
+        </select>
+      </label>
+      <label>徒歩分
+        <select id="walkSelect">
+          <option value="">選択してください</option>
+        </select>
+      </label>
+    </section>
 
-      const city = data[citySelect.value];
-      if (city && city.towns) {
-        Object.entries(city.towns).forEach(([townCode, townObj]) => {
-          const opt = document.createElement("option");
-          opt.value = townCode;
-          opt.textContent = townObj.name;
-          townSelect.appendChild(opt);
-        });
-      }
-    });
+    <!-- 物件情報 -->
+    <section class="card">
+      <h2>物件情報</h2>
+      <label>種別
+        <select id="propertyType">
+          <option value="land">土地</option>
+          <option value="house">戸建</option>
+          <option value="mansion">マンション</option>
+          <option value="building">売ビル</option>
+          <option value="apartment">売アパート</option>
+        </select>
+      </label>
+      <label>面積（㎡）<input type="number" id="areaSqm"></label>
+      <label>構造
+        <select id="structure">
+          <option value="RC">RC</option>
+          <option value="木造">木造</option>
+          <option value="鉄骨">鉄骨</option>
+          <option value="SRC">SRC</option>
+        </select>
+      </label>
+      <label>建物階数 <input type="number" id="totalFloors"></label>
+      <label>所在階 <input type="number" id="floor"></label>
+      <label><input type="checkbox" id="isCorner"> 角地</label>
+      <label>採光面
+        <select id="aspect">
+          <option value="南">南</option>
+          <option value="東">東</option>
+          <option value="西">西</option>
+          <option value="北">北</option>
+        </select>
+      </label>
+    </section>
 
-    document.getElementById("townSelect").addEventListener("change", (e) => {
-      const chomeSelect = document.getElementById("chomeSelect");
-      chomeSelect.innerHTML = '<option value="">選択してください</option>';
-      const city = data[citySelect.value];
-      if (city && city.towns[e.target.value]) {
-        (city.towns[e.target.value].chomes || []).forEach(chome => {
-          const opt = document.createElement("option");
-          opt.value = chome;
-          opt.textContent = chome + "丁目";
-          chomeSelect.appendChild(opt);
-        });
-      }
-    });
-  } catch (err) {
-    console.error("住所データ取得失敗", err);
-  }
-}
+    <!-- 連絡先 -->
+    <section class="card">
+      <h2>査定結果を送る</h2>
+      <label>メールアドレス <input type="email" id="email"></label>
+      <button id="submitBtn">査定を送信</button>
+    </section>
+  </main>
 
-// 鉄道データロード
-async function loadRail() {
-  try {
-    const res = await fetch("/datasets/rail");
-    const data = await res.json(); // { lineCode: { name, stations: {stationCode:{name}} } }
-    const lineSelect = document.getElementById("lineSelect");
-    lineSelect.innerHTML = '<option value="">選択してください</option>';
-    Object.entries(data).forEach(([lineCode, lineObj]) => {
-      const opt = document.createElement("option");
-      opt.value = lineCode;
-      opt.textContent = lineObj.name;
-      lineSelect.appendChild(opt);
-    });
-
-    lineSelect.addEventListener("change", () => {
-      const stationSelect = document.getElementById("stationSelect");
-      stationSelect.innerHTML = '<option value="">選択してください</option>';
-      const line = data[lineSelect.value];
-      if (line && line.stations) {
-        Object.entries(line.stations).forEach(([stationCode, stationObj]) => {
-          const opt = document.createElement("option");
-          opt.value = stationCode;
-          opt.textContent = stationObj.name;
-          stationSelect.appendChild(opt);
-        });
-      }
-    });
-  } catch (err) {
-    console.error("鉄道データ取得失敗", err);
-  }
-}
-
-// ページロード時に呼び出し
-loadAddress();
-loadRail();
-
-// 送信処理（ダミー）
-document.getElementById("submitBtn").addEventListener("click", async () => {
-  alert("送信処理は後で実装します");
-});
+  <script src="app.js"></script>
+</body>
+</html>
