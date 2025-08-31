@@ -1,15 +1,14 @@
 // public/app/app.js
 // -----------------------------------------------------------------------------
 // UI 初期化 + データローダ + /estimate 呼び出し
+// ── 住所/沿線データの形式差（配列 or 連想オブジェクト）に両対応版 ──
 // -----------------------------------------------------------------------------
 
-// 環境依存パス（/app 配下に datasets を置いたため相対でOK）
-const PREF = "hiroshima"; // Render の環境変数 PREFECTURE と同じ想定（今回は固定）
+const PREF = "hiroshima"; // 今回は固定
 
-// DOM
+// DOM 参照
 const els = {
-  userTypePersonal: null,
-  userTypeBusiness: null,
+  // ご利用区分
   businessFields: null,
 
   // エリア
@@ -18,7 +17,7 @@ const els = {
   chome: null,
   addressDetail: null,
 
-  // 駅
+  // 最寄り
   line: null,
   station: null,
   walk: null,
@@ -44,11 +43,11 @@ const els = {
   resultPrice: null
 };
 
-// ---------------- UI: 共通ヘルパ ----------------
+// ---------------- 共通ヘルパ ----------------
 function $(id) { return document.getElementById(id); }
 
 async function getJSON(url) {
-  const res = await fetch(url);
+  const res = await fetch(url, { cache: "no-cache" });
   if (!res.ok) throw new Error(`fetch failed: ${url} (${res.status})`);
   return res.json();
 }
@@ -62,77 +61,169 @@ function fillOptions(select, items, { valueKey = "value", labelKey = "label", pl
     select.appendChild(opt0);
   }
   items.forEach((it) => {
+    const v = typeof it === "string" ? it : it[valueKey];
+    const l = typeof it === "string" ? it : it[labelKey];
+    if (v == null || l == null) return;
     const opt = document.createElement("option");
-    opt.value = typeof it === "string" ? it : it[valueKey];
-    opt.textContent = typeof it === "string" ? it : it[labelKey];
+    opt.value = String(v);
+    opt.textContent = String(l);
     select.appendChild(opt);
   });
 }
 
 function range(n1, n2) {
-  const arr = [];
-  for (let i = n1; i <= n2; i++) arr.push(i);
-  return arr;
+  const out = [];
+  for (let i = n1; i <= n2; i++) out.push(i);
+  return out;
 }
 
-// ---------------- 住所データローダ ----------------
-// /app/datasets/address/hiroshima/index.json : { "広島市中区":"34101", ... }
-// /app/datasets/address/hiroshima/34101.json : [{ town:"○○", chome:["1丁目",...], ... }, ...]
-let CITY_INDEX = {}; // name -> code
-let CURRENT_TOWN_LIST = []; // [{ town, chome:[] }, ...]
+// ---------------- 住所ローダ（両形式対応） ----------------
+// index.json: ① { "広島市中区": "34101", ... } ② [ {name|name_ja, code}, ... ]
+let CURRENT_TOWN_LIST = []; // [{ name, chomes: [] }]
+
+function normalizeCityIndex(idx) {
+  // 返り値: [{ value: "34101", label: "広島市中区" }, ...]
+  const out = [];
+  if (!idx) return out;
+
+  if (Array.isArray(idx)) {
+    idx.forEach((it) => {
+      const label = it?.name_ja || it?.name || it?.label || it?.title;
+      const value = it?.code ?? it?.value ?? it?.id;
+      if (label && (value || value === 0)) out.push({ label, value: String(value) });
+    });
+    return out;
+  }
+
+  // 連想オブジェクト
+  Object.entries(idx).forEach(([label, value]) => {
+    if (label && (value || value === 0)) out.push({ label, value: String(value) });
+  });
+  return out;
+}
+
+function normalizeTownsFile(data) {
+  // 受け: [{ town, chome:[...] }, ...] / { towns:[...]} / { list:[...]}
+  let arr = [];
+  if (Array.isArray(data)) arr = data;
+  else if (Array.isArray(data?.towns)) arr = data.towns;
+  else if (Array.isArray(data?.list)) arr = data.list;
+
+  return arr
+    .map((t) => {
+      const name = t?.town || t?.name || t?.label || t?.title;
+      const ch = t?.chome || t?.chomes || t?.blocks || [];
+      const chomes = Array.isArray(ch) ? ch.map((x) => String(x)) : [];
+      return name ? { name, chomes } : null;
+    })
+    .filter(Boolean);
+}
 
 async function loadCities() {
   const idx = await getJSON(`./datasets/address/${PREF}/index.json`);
-  CITY_INDEX = idx || {};
-  const cityNames = Object.keys(CITY_INDEX);
-  fillOptions(els.city, cityNames, { placeholder: "市区町村を選択" });
-}
+  const cityItems = normalizeCityIndex(idx);
+  fillOptions(els.city, cityItems, {
+    valueKey: "value",
+    labelKey: "label",
+    placeholder: "市区町村を選択"
+  });
 
-async function loadTownsByCity(cityName) {
-  const code = CITY_INDEX[cityName];
-  if (!code) {
+  // 変更時は「コード」で町ファイルを読む（[object Object].json 問題を回避）
+  els.city.onchange = async () => {
+    const code = els.city.value;
     fillOptions(els.town, [], { placeholder: "町名を選択" });
     fillOptions(els.chome, [], { placeholder: "丁目を選択" });
-    CURRENT_TOWN_LIST = [];
-    return;
+    if (!code) return;
+
+    const townsRaw = await getJSON(`./datasets/address/${PREF}/${encodeURIComponent(code)}.json`);
+    CURRENT_TOWN_LIST = normalizeTownsFile(townsRaw);
+    fillOptions(
+      els.town,
+      CURRENT_TOWN_LIST.map((t) => t.name),
+      { placeholder: "町名を選択" }
+    );
+  };
+
+  els.town.onchange = () => {
+    const selected = CURRENT_TOWN_LIST.find((t) => t.name === els.town.value);
+    const chomes = selected?.chomes ?? [];
+    // 「1丁目」等の表記・数値両対応
+    fillOptions(
+      els.chome,
+      chomes.map((c) => {
+        const label = c.endsWith("丁目") ? c : `${c}丁目`;
+        const value = c.replace(/丁目$/u, "");
+        return { value, label };
+      }),
+      { valueKey: "value", labelKey: "label", placeholder: "丁目を選択" }
+    );
+  };
+}
+
+// ---------------- 鉄道路線ローダ（両形式対応） ----------------
+// index.json: ① { "広電 本線":"hiroden-honsen.json", ... } ② { lines:[{name_ja,file},...] }
+function normalizeLinesIndex(idx) {
+  const out = [];
+  if (!idx) return out;
+
+  if (Array.isArray(idx?.lines)) {
+    idx.lines.forEach((l) => {
+      const name = l?.name_ja || l?.name || l?.label || l?.code;
+      const file = l?.file || (l?.code ? `${l.code}.json` : "");
+      if (name && file) out.push({ name, file });
+    });
+    return out;
   }
-  const arr = await getJSON(`./datasets/address/${PREF}/${code}.json`);
-  CURRENT_TOWN_LIST = Array.isArray(arr) ? arr : [];
-  const townNames = CURRENT_TOWN_LIST.map((t) => t.town);
-  fillOptions(els.town, townNames, { placeholder: "町名を選択" });
-  fillOptions(els.chome, [], { placeholder: "丁目を選択" });
+
+  if (Array.isArray(idx)) {
+    idx.forEach((l) => {
+      const name = l?.name_ja || l?.name || l?.label || l?.code;
+      const file = l?.file || (l?.code ? `${l.code}.json` : "");
+      if (name && file) out.push({ name, file });
+    });
+    return out;
+  }
+
+  // 連想オブジェクト
+  Object.entries(idx).forEach(([name, file]) => {
+    if (name && file) out.push({ name, file: String(file) });
+  });
+  return out;
 }
 
-function loadChomeByTown(townName) {
-  const t = CURRENT_TOWN_LIST.find((x) => x.town === townName);
-  const chomes = (t && Array.isArray(t.chome)) ? t.chome : [];
-  fillOptions(els.chome, chomes, { placeholder: "丁目を選択" });
+function normalizeStations(data) {
+  let arr = [];
+  if (Array.isArray(data)) arr = data;
+  else if (Array.isArray(data?.stations)) arr = data.stations;
+  else if (Array.isArray(data?.list)) arr = data.list;
+
+  return arr
+    .map((s) => s?.station || s?.name_ja || s?.name || s?.title)
+    .filter(Boolean)
+    .map(String);
 }
 
-// ---------------- 鉄道データローダ ----------------
-// /app/datasets/rail/hiroshima/index.json : { lines: [{ code, name_ja, file }, ...] }
-// /app/datasets/rail/hiroshima/<file>.json : [{ station:"○○駅", lat?, lng? }, ...]
-let LINE_INDEX = []; // [{ code, name_ja, file }]
+let LINE_FILES = []; // [{ name, file }]
 async function loadLines() {
-  const data = await getJSON(`./datasets/rail/${PREF}/index.json`);
-  LINE_INDEX = Array.isArray(data?.lines) ? data.lines : [];
-  const opts = LINE_INDEX.map((l) => ({ value: l.code, label: l.name_ja || l.code }));
-  fillOptions(els.line, opts, { valueKey: "value", labelKey: "label", placeholder: "路線を選択" });
-  fillOptions(els.station, [], { placeholder: "駅を選択" });
-}
+  const idx = await getJSON(`./datasets/rail/${PREF}/index.json`);
+  LINE_FILES = normalizeLinesIndex(idx);
+  fillOptions(
+    els.line,
+    LINE_FILES.map((l) => ({ value: l.file, label: l.name })),
+    { valueKey: "value", labelKey: "label", placeholder: "路線を選択" }
+  );
 
-async function loadStationsByLine(lineCode) {
-  const line = LINE_INDEX.find((l) => l.code === lineCode);
-  if (!line) {
+  els.line.onchange = async () => {
     fillOptions(els.station, [], { placeholder: "駅を選択" });
-    return;
-  }
-  const arr = await getJSON(`./datasets/rail/${PREF}/${line.file}`);
-  const stations = (Array.isArray(arr) ? arr : []).map((s) => s.station || s.name).filter(Boolean);
-  fillOptions(els.station, stations, { placeholder: "駅を選択" });
+    const file = els.line.value;
+    if (!file) return;
+    const stationsRaw = await getJSON(`./datasets/rail/${PREF}/${encodeURIComponent(file)}`);
+    const stations = normalizeStations(stationsRaw);
+    fillOptions(els.station, stations, { placeholder: "駅を選択" });
+  };
 }
 
-// ---------------- 送信（査定） ----------------
+// ---------------- 送信（/estimate） ----------------
 async function sendEstimate() {
   const payload = {
     // ご利用区分
@@ -140,13 +231,15 @@ async function sendEstimate() {
 
     // エリア
     prefecture: PREF,
-    city: els.city.value || "",
+    city: els.city.value ? els.city.options[els.city.selectedIndex].textContent : "",
+    cityCode: els.city.value || "", // 参考
     town: els.town.value || "",
     chome: els.chome.value || "",
     addressDetail: els.addressDetail.value || "",
 
     // 最寄り
-    line: els.line.value || "",
+    line: els.line.value ? els.line.options[els.line.selectedIndex].textContent : "",
+    lineFile: els.line.value || "", // 参考
     station: els.station.value || "",
     walkMinutes: Number(els.walk.value || 0),
 
@@ -167,7 +260,6 @@ async function sendEstimate() {
     email: els.email.value || ""
   };
 
-  // API 呼び出し
   const res = await fetch("/estimate", {
     method: "POST",
     headers: { "content-type": "application/json" },
@@ -175,23 +267,39 @@ async function sendEstimate() {
   });
 
   const data = await res.json().catch(() => ({}));
-
   if (!res.ok || !data?.ok) {
     console.error("estimate error:", data);
     alert("査定に失敗しました。必須項目をご確認ください。");
     return;
   }
 
-  // 表示更新
   const man = Number(data.priceMan || 0);
   els.resultPrice.textContent = `${man.toLocaleString()} 万円`;
 }
 
 // ---------------- 初期化 ----------------
+function initWalk() {
+  fillOptions(els.walk, range(1, 60).map(String), { placeholder: "選択してください" });
+}
+function initFloors() {
+  fillOptions(els.totalFloors, range(1, 100).map(String), { placeholder: "選択してください" });
+  fillOptions(els.floor, range(1, 100).map(String), { placeholder: "選択してください" });
+}
+function initYears() {
+  fillOptions(els.buildYear, range(1900, 2025).reverse().map(String), { placeholder: "年を選択" });
+}
+function initUserTypeToggle() {
+  const radios = document.querySelectorAll('input[name="userType"]');
+  const toggle = () => {
+    const isBiz = document.querySelector('input[name="userType"]:checked')?.value === "business";
+    els.businessFields.style.display = isBiz ? "grid" : "none";
+  };
+  radios.forEach((r) => r.addEventListener("change", toggle));
+  toggle();
+}
+
 async function bootstrap() {
   // 要素参照
-  els.userTypePersonal = document.querySelector('input[name="userType"][value="personal"]');
-  els.userTypeBusiness  = document.querySelector('input[name="userType"][value="business"]');
   els.businessFields = document.getElementById("businessFields");
 
   els.city = $("citySelect");
@@ -220,36 +328,17 @@ async function bootstrap() {
 
   els.resultPrice = $("resultPrice");
 
-  // 個人/法人 表示切替
-  document.querySelectorAll('input[name="userType"]').forEach((r) => {
-    r.addEventListener("change", () => {
-      const isBiz = document.querySelector('input[name="userType"]:checked')?.value === "business";
-      els.businessFields.style.display = isBiz ? "grid" : "none";
-    });
-  });
+  // 初期UI
+  initWalk();
+  initFloors();
+  initYears();
+  initUserTypeToggle();
 
-  // 徒歩分 1..60
-  fillOptions(els.walk, range(1, 60).map((i) => `${i}`), { placeholder: "選択してください" });
+  // データ読み込み（片方で失敗してももう片方は続ける）
+  await Promise.allSettled([loadCities(), loadLines()]);
 
-  // 建物階数 / 所在階 1..100
-  fillOptions(els.totalFloors, range(1, 100).map(String), { placeholder: "選択してください" });
-  fillOptions(els.floor, range(1, 100).map(String), { placeholder: "選択してください" });
-
-  // 築年 1900..2025（固定）
-  fillOptions(els.buildYear, range(1900, 2025).reverse().map(String), { placeholder: "年を選択" });
-
-  // イベント: 住所
-  els.city.addEventListener("change", (e) => loadTownsByCity(e.target.value));
-  els.town.addEventListener("change", (e) => loadChomeByTown(e.target.value));
-
-  // イベント: 路線
-  els.line.addEventListener("change", (e) => loadStationsByLine(e.target.value));
-
-  // 送信
+  // ハンドラ
   els.submitBtn.addEventListener("click", sendEstimate);
-
-  // データロード
-  await Promise.all([loadCities(), loadLines()]);
 }
 
 document.addEventListener("DOMContentLoaded", bootstrap);
