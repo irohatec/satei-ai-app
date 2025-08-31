@@ -15,30 +15,34 @@
     <!-- ご利用の方 -->
     <section class="card">
       <h2>ご利用の方</h2>
+
       <div class="inline span-12">
-        <label class="inline"><input type="radio" name="userType" value="personal" checked /><span>個人</span></label>
-        <label class="inline"><input type="radio" name="userType" value="business" /><span>個人事業主または法人</span></label>
+        <label class="inline">
+          <input type="radio" name="userType" value="personal" checked />
+          <span>個人</span>
+        </label>
+        <label class="inline">
+          <input type="radio" name="userType" value="business" />
+          <span>個人事業主または法人</span>
+        </label>
+        <small class="small note-right">※商用利用の場合は、お名前と連絡先を記載してください。</small>
       </div>
 
       <!-- 事業者向け（幅広） -->
       <div id="businessFields" class="grid span-12" style="display:none">
-        <label class="span-8">会社名 <input id="companyName" type="text" placeholder="例）株式会社〇〇" /></label>
-        <label class="span-4">連絡先（電話） <input id="phone" type="tel" placeholder="例）080-1234-5678" /></label>
+        <label class="span-8">会社名
+          <input id="companyName" type="text" placeholder="例）株式会社〇〇" />
+        </label>
+        <label class="span-4">連絡先（電話）
+          <input id="phone" type="tel" placeholder="例）080-1234-5678" />
+        </label>
       </div>
-    </section>
-
-    <!-- ご利用にあたって -->
-    <section class="card">
-      <h2>ご利用にあたって</h2>
-      <p class="small">
-        ※本アプリは、国土交通省のデータおよび都道府県地価調査データを基にAIが査定しています。<br />
-        ※商用利用の場合は、お名前と連絡先を記載してください。
-      </p>
     </section>
 
     <!-- エリア -->
     <section class="card">
       <h2>エリア</h2>
+
       <label>都道府県
         <select id="prefSelect" disabled>
           <option value="hiroshima" selected>広島県</option>
@@ -47,15 +51,21 @@
       </label>
 
       <label>市区町村
-        <select id="citySelect"><option value="">市区町村を選択</option></select>
+        <select id="citySelect">
+          <option value="">市区町村を選択</option>
+        </select>
       </label>
 
       <label>町名
-        <select id="townSelect"><option value="">町名を選択</option></select>
+        <select id="townSelect">
+          <option value="">町名を選択</option>
+        </select>
       </label>
 
       <label>丁目
-        <select id="chomeSelect"><option value="">丁目を選択</option></select>
+        <select id="chomeSelect">
+          <option value="">丁目を選択</option>
+        </select>
       </label>
 
       <label class="span-8">番地・マンション名
@@ -66,14 +76,23 @@
     <!-- 最寄り駅 -->
     <section class="card">
       <h2>最寄り駅</h2>
+
       <label>路線
-        <select id="lineSelect"><option value="">路線を選択</option></select>
+        <select id="lineSelect">
+          <option value="">路線を選択</option>
+        </select>
       </label>
+
       <label>駅
-        <select id="stationSelect"><option value="">駅を選択</option></select>
+        <select id="stationSelect">
+          <option value="">駅を選択</option>
+        </select>
       </label>
+
       <label>徒歩分 <small class="small">（1分=80メートルの目安）</small>
-        <select id="walkSelect"><option value="">選択してください</option></select>
+        <select id="walkSelect">
+          <option value="">選択してください</option>
+        </select>
       </label>
     </section>
 
@@ -109,7 +128,7 @@
       </label>
 
       <label>築年 <span class="required">（必須）</span>
-        <select id="buildYear"><!-- app.jsで1900〜2025を投入 --></select>
+        <select id="buildYear"><!-- app.js で 1900〜2025 を投入 --></select>
       </label>
 
       <label>間取
@@ -131,11 +150,17 @@
       </label>
 
       <label>建物階数
-        <select id="totalFloors"><option value="">選択してください</option></select>
+        <select id="totalFloors">
+          <option value="">選択してください</option>
+          <!-- app.js で 1〜100 を投入 -->
+        </select>
       </label>
 
       <label>所在階
-        <select id="floor"><option value="">選択してください</option></select>
+        <select id="floor">
+          <option value="">選択してください</option>
+          <!-- app.js で 1〜100 を投入 -->
+        </select>
       </label>
 
       <label>採光面（最大開口面）
@@ -146,41 +171,48 @@
         </select>
       </label>
 
-      <label class="inline"><input id="isCorner" type="checkbox" /> <span>角地</span></label>
+      <div class="field-inline">
+        <input id="isCorner" type="checkbox" />
+        <label for="isCorner">角地</label>
+      </div>
+    </section>
+
+    <!-- 査定結果 -->
+    <section class="card">
+      <h2>査定結果</h2>
+      <div class="result-banner" id="resultPrice">— 万円</div>
     </section>
 
     <!-- 査定結果を送る -->
     <section class="card">
       <h2>査定結果を送る</h2>
-      <label class="span-8">メールアドレス
-        <input id="email" type="email" placeholder="例）you@example.com" />
-      </label>
 
-      <div class="actions span-12">
-        <button id="submitBtn" type="button" class="btn-icon" aria-label="査定を送信">
-          <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M2 21l21-9L2 3v7l15 2-15 2v7z"/></svg>
-          査定を送信
-        </button>
+      <div class="send-row span-12">
+        <label class="span-8">メールアドレス
+          <input id="email" type="email" placeholder="例）you@example.com" />
+        </label>
+        <div class="actions span-4 align-end">
+          <button id="submitBtn" type="button" class="btn-icon" aria-label="査定を送信">
+            <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M2 21l21-9L2 3v7l15 2-15 2v7z"/></svg>
+            査定を送信
+          </button>
+        </div>
       </div>
 
-      <p class="small span-12">
-        ※該当物件付近の成約情報がある場合は、完全版レポートはメールでお送りします。<br />
-        ※中央値＋上下幅、徒歩逓減グラフ、根拠サマリーを送付します。営業電話は致しません。
-      </p>
+      <label class="span-12">コメント欄
+        <textarea id="message" rows="5" placeholder="ご要望・補足事項など自由にご記入ください"></textarea>
+      </label>
     </section>
 
-    <!-- コメント・個人情報保護方針 -->
+    <!-- ご利用にあたって（ページ最下部） -->
     <section class="card">
-      <h2>コメント</h2>
-      <textarea id="message" rows="6" placeholder="ご要望・補足事項など自由にご記入ください"></textarea>
-
-      <h2 class="span-12">個人情報保護方針</h2>
-      <p class="small span-12">
-        ご提供いただいた個人情報は、不動産の売買・賃貸、それらの代理・仲介・管理その他付帯する事業のため、弊社において利用させて頂きます。
+      <h2>ご利用にあたって</h2>
+      <p class="small">
+        ※該当物件付近の最安値及び最高値がある場合は、メールでお送りします。<br />
+        ※本アプリは、国土交通省のデータおよび都道府県地価調査データを基にAIが査定しています。<br />
+        ※ご入力いただいた情報は、当社の個人情報保護方針に従い、適正に管理いたします。
       </p>
     </section>
-
-    <section class="error-summary" id="errorBox" style="display:none"></section>
   </main>
 
   <footer><p class="small">© 不動産AI査定</p></footer>
