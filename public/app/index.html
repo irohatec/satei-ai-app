@@ -150,17 +150,11 @@
       </label>
 
       <label>建物階数
-        <select id="totalFloors">
-          <option value="">選択してください</option>
-          <!-- app.js で 1〜100 を投入 -->
-        </select>
+        <select id="totalFloors"><!-- app.js で 1〜100 を投入 --></select>
       </label>
 
       <label>所在階
-        <select id="floor">
-          <option value="">選択してください</option>
-          <!-- app.js で 1〜100 を投入 -->
-        </select>
+        <select id="floor"><!-- app.js で 1〜100 を投入 --></select>
       </label>
 
       <label>採光面（最大開口面）
@@ -187,31 +181,23 @@
     <section class="card">
       <h2>査定結果を送る</h2>
 
-      <div class="send-row span-12">
-        <label class="span-8">メールアドレス
-          <input id="email" type="email" placeholder="例）you@example.com" />
-        </label>
-        <div class="actions span-4 align-end">
-          <button id="submitBtn" type="button" class="btn-icon" aria-label="査定を送信">
-            <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M2 21l21-9L2 3v7l15 2-15 2v7z"/></svg>
-            査定を送信
-          </button>
-        </div>
+      <label class="span-12">メールアドレス
+        <input id="email" type="email" placeholder="例）you@example.com" />
+      </label>
+
+      <!-- スタイリッシュな一行ボタン（全幅） -->
+      <div class="span-12">
+        <button id="submitBtn" type="button" class="btn-primary" aria-label="査定を送信">
+          査定を送信
+        </button>
       </div>
 
-      <label class="span-12">コメント欄
-        <textarea id="message" rows="5" placeholder="ご要望・補足事項など自由にご記入ください"></textarea>
-      </label>
-    </section>
-
-    <!-- ご利用にあたって（ページ最下部） -->
-    <section class="card">
-      <h2>ご利用にあたって</h2>
-      <p class="small">
-        ※該当物件付近の最安値及び最高値がある場合は、メールでお送りします。<br />
-        ※本アプリは、国土交通省のデータおよび都道府県地価調査データを基にAIが査定しています。<br />
-        ※ご入力いただいた情報は、当社の個人情報保護方針に従い、適正に管理いたします。
-      </p>
+      <!-- 注意書き：ボタン直下／1行ずつ折り返しなし -->
+      <div class="notices span-12">
+        <p class="notice nowrap">※該当物件付近の最安値及び最高値がある場合は、メールでお送りします。</p>
+        <p class="notice nowrap">※本アプリは、国土交通省のデータおよび都道府県地価調査データを基にAIが査定しています。</p>
+        <p class="notice nowrap">※ご入力いただいた情報は、当社の個人情報保護方針に従い、適正に管理いたします。</p>
+      </div>
     </section>
   </main>
 
