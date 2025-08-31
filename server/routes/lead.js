@@ -1,36 +1,28 @@
 // server/routes/lead.js
 // -----------------------------------------------------------------------------
 // POST /lead
-//   目的: フロントで入力されたメールアドレスや問い合わせ内容を受け取り、
-//         MVPでは「メール送信のみ」を行う（保存は将来 Firebase へ移行予定）
-// 入力例:
-//   {
-//     "email": "user@example.com",
-//     "name": "山田太郎",
-//     "note": "査定結果について相談希望",
-//     "estimate": { ... }   // 任意: /estimate のリクエスト/レスポンスを添付してもOK
-//   }
-//
-// 環境変数 (.env):
-//   MAIL_ENABLED=true|false
-//   MAIL_HOST, MAIL_PORT, MAIL_SECURE, MAIL_USER, MAIL_PASS
-//   MAIL_FROM, MAIL_TO
-//
-// 備考:
-// - バリデーションは最小限（email 必須）
-// - メール送信に失敗した場合は 502 を返す
+//   フロントの問い合わせを受けて、通知メールを送る（MVP）
+//   - メール送信は MAIL_PROVIDER に従う（SMTP / OFF）
+//   - OFF のときは送信スキップだが 200 を返す（研修・検証を止めない）
+//   - 送信有効時に失敗したら 502 を返す
+// 環境変数（Render の Environment Variables）
+//   MAIL_PROVIDER=SMTP | OFF
+//   SMTP_HOST, SMTP_PORT, SMTP_SECURE, SMTP_USER, SMTP_PASS
+//   MAIL_FROM   = '"Estimator" <no-reply@example.com>'
+//   NOTIFY_TO   = 受信先メール（あなたの受信メール）
 // -----------------------------------------------------------------------------
 
 import express from "express";
-import { sendMailIfEnabled } from "../adapters/mailer/index.js";
+// ★ ここがポイント：名前付き { sendMailIfEnabled } は使わず、デフォルトでアダプタを受け取る
+//   server/adapters/mailer/index.js は CommonJS の module.exports を返すため、ESM からは default で受ける
+import mailer from "../adapters/mailer/index.js";
 
 const router = express.Router();
 
-// ---- helpers ---------------------------------------------------
-
+// ────────────── Helpers ──────────────
 function isValidEmail(v) {
   if (typeof v !== "string") return false;
-  // シンプルなメール判定（厳密すぎない）
+  // ざっくりチェック（厳密すぎない）
   return /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(v.trim());
 }
 
@@ -40,65 +32,108 @@ function sanitize(str, max = 5000) {
   return s.length > max ? s.slice(0, max) : s;
 }
 
-// ---- route -----------------------------------------------------
+function pickReceiveTo() {
+  // NOTIFY_TO 優先、なければ MAIL_TO（どちらか1つでOK）
+  return process.env.NOTIFY_TO || process.env.MAIL_TO || "";
+}
 
+function isMailEnabled() {
+  // MAIL_PROVIDER が OFF なら送らない（MVPはこれで十分）
+  const provider = (process.env.MAIL_PROVIDER || "OFF").toUpperCase();
+  if (provider === "OFF") return false;
+
+  // （任意）互換のため MAIL_ENABLED=false が明示されたら無効化
+  if ((process.env.MAIL_ENABLED || "").toLowerCase() === "false") return false;
+
+  return true;
+}
+
+// ────────────── Route ──────────────
 router.post("/", async (req, res, next) => {
   try {
-    const { email, name, note, estimate } = req.body || {};
+    const { email, name, phone, companyName, note, estimate } = req.body || {};
 
-    // 必須: email
-    if (!isValidEmail(email)) {
-      return res.status(400).json({
-        ok: false,
-        error: "INVALID_EMAIL",
-        message: "メールアドレスを正しく入力してください。"
-      });
+    // 受付用の最低限チェック（メールは必須）
+    if (!isValidEmail(email || "")) {
+      return res.status(400).json({ ok: false, error: "invalid_email" });
     }
 
-    // メール本文（テキスト）
+    // 受信先
+    const to = pickReceiveTo();
+    if (!to) {
+      // 受信先が未設定でも 500 ではなく分かりやすい 500/設定不足で返す
+      return res.status(500).json({ ok: false, error: "server_misconfigured", detail: "NOTIFY_TO (or MAIL_TO) is empty" });
+    }
+
+    // 件名・本文
+    const subject = "【査定アプリ】新規リード通知";
     const lines = [];
     lines.push("【新規リードの通知】");
     lines.push("");
     lines.push(`日時: ${new Date().toISOString()}`);
-    lines.push(`氏名: ${sanitize(name || "(未入力)", 200)}`);
+    if (companyName) lines.push(`会社名: ${sanitize(companyName, 200)}`);
+    if (name)        lines.push(`氏名: ${sanitize(name, 200)}`);
+    if (phone)       lines.push(`電話: ${sanitize(phone, 100)}`);
     lines.push(`メール: ${sanitize(email, 320)}`);
+
     if (note) {
       lines.push("");
-      lines.push("----- ユーザーメモ -----");
+      lines.push("----- ユーザーからのメッセージ -----");
       lines.push(sanitize(note, 2000));
     }
+
     if (estimate && typeof estimate === "object") {
       lines.push("");
-      lines.push("----- 添付された査定情報 (JSON) -----");
+      lines.push("----- 添付 estimate JSON（一部/省略可） -----");
       try {
-        lines.push(JSON.stringify(estimate, null, 2));
+        const pretty = JSON.stringify(estimate, null, 2);
+        // メールの負荷にならない範囲で 4,000 文字に制限
+        lines.push(sanitize(pretty, 4000));
       } catch {
-        lines.push("(estimate を文字列化できませんでした)");
+        lines.push("(estimate の整形に失敗しました)");
       }
     }
-    const textBody = lines.join("\n");
 
-    // 送信（.env の MAIL_ENABLED が true の時のみ実行）
-    const sent = await sendMailIfEnabled({
-      subject: "【査定アプリ】新規リードの通知",
-      text: textBody
-      // HTML化したい場合は html: "<p>...</p>" を追加
-    });
+    const text = lines.join("\n");
 
-    if (sent.error) {
-      // 送信が有効化されているのに失敗した場合は 502
-      return res.status(502).json({
-        ok: false,
-        error: "MAIL_SEND_FAILED",
-        message: sent.message || "メール送信に失敗しました。"
+    // 送信可否
+    const enabled = isMailEnabled();
+
+    if (!enabled) {
+      // 送信スキップ（MVP仕様：200で返す）
+      return res.json({
+        ok: true,
+        mailed: false,
+        message: "MAIL_PROVIDER=OFF（または MAIL_ENABLED=false）のため送信をスキップしました。",
       });
     }
 
-    // 成功（メール無効化中でも 200 で返す：MVPの仕様）
+    // 実送信（adapter は { send({to, subject, text, html}) } を想定）
+    const from = process.env.MAIL_FROM || '"Estimator" <no-reply@example.com>';
+    const result = await mailer.send({
+      to,
+      subject,
+      text,
+      html: undefined, // テキストのみ
+      from,            // nodemailer 側で利用
+    });
+
+    // アダプタの戻り値規約に合わせて判定（nodemailer.js は { ok, sent, messageId }）
+    if (!result || result.ok === false) {
+      // 送信有効だったのに失敗 → 502
+      return res.status(502).json({
+        ok: false,
+        error: "mail_send_failed",
+        detail: result?.error || "unknown_error",
+      });
+    }
+
+    // 成功
     return res.json({
       ok: true,
-      mailed: sent.enabled, // true=送信試行あり, false=MAIL_ENABLED=false で送信スキップ
-      message: sent.enabled ? "通知メールを送信しました。" : "MAIL_ENABLED=false のため送信をスキップしました。"
+      mailed: true,
+      provider: (process.env.MAIL_PROVIDER || "").toUpperCase(),
+      messageId: result.messageId || undefined,
     });
   } catch (err) {
     return next(err);
