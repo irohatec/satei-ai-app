@@ -78,14 +78,13 @@ function range(n1, n2) {
 }
 
 // ---------------- 住所ローダ（両形式対応） ----------------
-// index.json: ① { "広島市中区": "34101", ... } ② [ {name|name_ja, code}, ... ]
-let CURRENT_TOWN_LIST = []; // [{ name, chomes: [] }]
-
+// index.json: ① { "広島市中区":"34101", ... } ② { wards|cities|list: [ {name_ja|name, code}, ... ] } ③ 直接配列
 function normalizeCityIndex(idx) {
   // 返り値: [{ value: "34101", label: "広島市中区" }, ...]
   const out = [];
   if (!idx) return out;
 
+  // 直接配列
   if (Array.isArray(idx)) {
     idx.forEach((it) => {
       const label = it?.name_ja || it?.name || it?.label || it?.title;
@@ -95,7 +94,23 @@ function normalizeCityIndex(idx) {
     return out;
   }
 
-  // 連想オブジェクト
+  // オブジェクト内部の配列（wards / cities / list）
+  const arr =
+    (Array.isArray(idx.cities) && idx.cities) ||
+    (Array.isArray(idx.wards) && idx.wards) ||
+    (Array.isArray(idx.list) && idx.list) ||
+    null;
+
+  if (arr) {
+    arr.forEach((it) => {
+      const label = it?.name_ja || it?.name || it?.label || it?.title;
+      const value = it?.code ?? it?.value ?? it?.id;
+      if (label && (value || value === 0)) out.push({ label, value: String(value) });
+    });
+    return out;
+  }
+
+  // 連想オブジェクト形式
   Object.entries(idx).forEach(([label, value]) => {
     if (label && (value || value === 0)) out.push({ label, value: String(value) });
   });
@@ -112,7 +127,7 @@ function normalizeTownsFile(data) {
   return arr
     .map((t) => {
       const name = t?.town || t?.name || t?.label || t?.title;
-      const ch = t?.chome || t?.chomes || t?.blocks || [];
+      const ch = t?.chome || t?.chomes || t?.blocks || t?.丁目 || [];
       const chomes = Array.isArray(ch) ? ch.map((x) => String(x)) : [];
       return name ? { name, chomes } : null;
     })
@@ -136,23 +151,25 @@ async function loadCities() {
     if (!code) return;
 
     const townsRaw = await getJSON(`./datasets/address/${PREF}/${encodeURIComponent(code)}.json`);
-    CURRENT_TOWN_LIST = normalizeTownsFile(townsRaw);
+    const townList = normalizeTownsFile(townsRaw);
+    // 保持
+    els._townList = townList;
     fillOptions(
       els.town,
-      CURRENT_TOWN_LIST.map((t) => t.name),
+      townList.map((t) => t.name),
       { placeholder: "町名を選択" }
     );
   };
 
   els.town.onchange = () => {
-    const selected = CURRENT_TOWN_LIST.find((t) => t.name === els.town.value);
+    const list = els._townList || [];
+    const selected = list.find((t) => t.name === els.town.value);
     const chomes = selected?.chomes ?? [];
-    // 「1丁目」等の表記・数値両対応
     fillOptions(
       els.chome,
       chomes.map((c) => {
-        const label = c.endsWith("丁目") ? c : `${c}丁目`;
-        const value = c.replace(/丁目$/u, "");
+        const label = /丁目$/.test(c) ? c : `${c}丁目`;
+        const value = String(c).replace(/丁目$/u, "");
         return { value, label };
       }),
       { valueKey: "value", labelKey: "label", placeholder: "丁目を選択" }
@@ -161,7 +178,7 @@ async function loadCities() {
 }
 
 // ---------------- 鉄道路線ローダ（両形式対応） ----------------
-// index.json: ① { "広電 本線":"hiroden-honsen.json", ... } ② { lines:[{name_ja,file},...] }
+// index.json: ① { "広電 本線":"hiroden-honsen.json", ... } ② { lines:[{name_ja,file},...] } ③ 配列
 function normalizeLinesIndex(idx) {
   const out = [];
   if (!idx) return out;
@@ -184,7 +201,6 @@ function normalizeLinesIndex(idx) {
     return out;
   }
 
-  // 連想オブジェクト
   Object.entries(idx).forEach(([name, file]) => {
     if (name && file) out.push({ name, file: String(file) });
   });
@@ -203,13 +219,12 @@ function normalizeStations(data) {
     .map(String);
 }
 
-let LINE_FILES = []; // [{ name, file }]
 async function loadLines() {
   const idx = await getJSON(`./datasets/rail/${PREF}/index.json`);
-  LINE_FILES = normalizeLinesIndex(idx);
+  const lineFiles = normalizeLinesIndex(idx);
   fillOptions(
     els.line,
-    LINE_FILES.map((l) => ({ value: l.file, label: l.name })),
+    lineFiles.map((l) => ({ value: l.file, label: l.name })),
     { valueKey: "value", labelKey: "label", placeholder: "路線を選択" }
   );
 
@@ -232,14 +247,14 @@ async function sendEstimate() {
     // エリア
     prefecture: PREF,
     city: els.city.value ? els.city.options[els.city.selectedIndex].textContent : "",
-    cityCode: els.city.value || "", // 参考
+    cityCode: els.city.value || "",
     town: els.town.value || "",
     chome: els.chome.value || "",
     addressDetail: els.addressDetail.value || "",
 
     // 最寄り
     line: els.line.value ? els.line.options[els.line.selectedIndex].textContent : "",
-    lineFile: els.line.value || "", // 参考
+    lineFile: els.line.value || "",
     station: els.station.value || "",
     walkMinutes: Number(els.walk.value || 0),
 
