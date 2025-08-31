@@ -80,15 +80,10 @@ function initUserTypeToggle() {
 
 // ------------------- normalizers（形式差異を吸収） -------------------
 function normalizeCityIndex(data) {
-  // 受け入れ例:
-  // ① { "広島市中区": "34101", ... }（辞書）
-  // ② { cities:[{name,code}, ...] } / { wards:[{name|name_ja,code}, ...] }
-  // ③ { list:[{label,value}, ...] }
   const out = [];
   if (!data) return out;
 
   if (Array.isArray(data)) {
-    // まれに配列で来るケース
     data.forEach((it) => {
       const name = it?.name_ja || it?.name || it?.label || it?.title || "";
       const code = it?.code ?? it?.value ?? "";
@@ -97,7 +92,6 @@ function normalizeCityIndex(data) {
     return out;
   }
 
-  // オブジェクト
   if (Array.isArray(data.cities)) {
     data.cities.forEach((c) => {
       const name = c?.name_ja || c?.name || c?.label || "";
@@ -123,7 +117,6 @@ function normalizeCityIndex(data) {
     return out;
   }
 
-  // 辞書形式
   Object.entries(data).forEach(([name, code]) => {
     if (name && (code || code === 0)) out.push({ name, code: String(code) });
   });
@@ -131,10 +124,6 @@ function normalizeCityIndex(data) {
 }
 
 function normalizeTowns(data) {
-  // 受け入れ例:
-  // ① [ { town:"大手町", chome:[...] }, ... ]（配列）
-  // ② { towns:[{ name|town, chome|chomes|blocks:[...] }, ...] }
-  // ③ { list:[{ name, chome }, ...] } / { neighborhoods:[...] } など
   let arr = [];
   if (!data) return arr;
 
@@ -158,9 +147,6 @@ function normalizeTowns(data) {
 }
 
 function normalizeLinesIndex(data) {
-  // 受け入れ例:
-  // ① { "広電 本線": "hiroden-honsen.json", ... }
-  // ② { lines:[{ code, name_ja|name, file }, ...] }
   const out = [];
   if (!data) return out;
 
@@ -173,7 +159,6 @@ function normalizeLinesIndex(data) {
     return out;
   }
 
-  // 辞書形式
   Object.entries(data).forEach(([name, file]) => {
     if (name && file) out.push({ name, file: String(file) });
   });
@@ -181,9 +166,7 @@ function normalizeLinesIndex(data) {
 }
 
 function normalizeStations(data) {
-  // 受け入れ例:
-  // ① [ { station:"紙屋町東", lat, lng }, ... ]
-  // ② { stations:[{ station|name|title, ... }, ...] }
+  // ★ name_ja に対応（駅名が出ない原因はここ）
   let arr = [];
   if (!data) return arr;
 
@@ -197,7 +180,7 @@ function normalizeStations(data) {
 
   return arr
     .map((s) => {
-      const name = s?.station || s?.name || s?.title;
+      const name = s?.station || s?.name_ja || s?.name || s?.title;
       if (!name) return null;
       return { name, lat: s?.lat ?? null, lng: s?.lng ?? null };
     })
@@ -223,10 +206,8 @@ async function loadCities() {
     const townsRaw = await getJSON(`${ADDRESS_BASE}/${encodeURIComponent(code)}.json`);
     const towns = normalizeTowns(townsRaw);
 
-    // 町名
     towns.forEach((t) => appendOption(els.town, t.name, t.name));
 
-    // 丁目（町が変わったら更新）
     els.town.onchange = () => {
       clearOptions(els.chome, "丁目を選択");
       const selected = towns.find((x) => x.name === els.town.value);
