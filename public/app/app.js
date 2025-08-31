@@ -1,9 +1,4 @@
-// public/app/app.js
-// ============================================================================
-// データは /app/datasets/... から直接 fetch（server 依存なし）
-// 住所/路線の JSON 形式が多少違っても吸収する“堅牢版”
-// ============================================================================
-
+// /app データ直読み・堅牢版（駅 name_ja / 住所 wards 等も吸収）
 const PREF = "hiroshima";
 const DATA_BASE = "/app/datasets";
 const ADDRESS_BASE = `${DATA_BASE}/address/${PREF}`;
@@ -24,7 +19,11 @@ const els = {
   walk: document.getElementById("walkSelect"),
 
   propertyType: document.getElementById("propertyType"),
-  areaSqm: document.getElementById("areaSqm"),
+  areaUnit: document.getElementById("areaUnit"),
+  landArea: document.getElementById("landArea"),
+  buildingArea: document.getElementById("buildingArea"),
+  buildYear: document.getElementById("buildYear"),
+  floorPlan: document.getElementById("floorPlan"),
   structure: document.getElementById("structure"),
   totalFloors: document.getElementById("totalFloors"),
   floor: document.getElementById("floor"),
@@ -32,10 +31,12 @@ const els = {
   aspect: document.getElementById("aspect"),
 
   email: document.getElementById("email"),
+  message: document.getElementById("message"),
   submitBtn: document.getElementById("submitBtn"),
+  errorBox: document.getElementById("errorBox"),
 };
 
-// ------------------------- utils -------------------------
+// ---------- utils ----------
 function clearOptions(selectEl, placeholder = "選択してください") {
   if (!selectEl) return;
   selectEl.innerHTML = "";
@@ -44,7 +45,6 @@ function clearOptions(selectEl, placeholder = "選択してください") {
   opt0.textContent = placeholder;
   selectEl.appendChild(opt0);
 }
-
 function appendOption(selectEl, value, label) {
   if (!selectEl) return;
   const opt = document.createElement("option");
@@ -52,21 +52,16 @@ function appendOption(selectEl, value, label) {
   opt.textContent = label;
   selectEl.appendChild(opt);
 }
-
 async function getJSON(url) {
   const res = await fetch(url, { cache: "no-cache" });
   if (!res.ok) throw new Error(`fetch failed: ${url} (${res.status})`);
   return res.json();
 }
-
 function initWalkSelect() {
-  if (!els.walk) return;
   clearOptions(els.walk, "選択してください");
   for (let i = 1; i <= 60; i++) appendOption(els.walk, String(i), `${i}分`);
 }
-
 function initUserTypeToggle() {
-  if (!els.businessFields || !els.userTypeRadios?.length) return;
   const toggle = () => {
     const v = document.querySelector('input[name="userType"]:checked')?.value;
     const isBiz = v === "business";
@@ -77,12 +72,23 @@ function initUserTypeToggle() {
   els.userTypeRadios.forEach((r) => r.addEventListener("change", toggle));
   toggle();
 }
+function initYears() {
+  clearOptions(els.buildYear, "年を選択");
+  for (let y = 2025; y >= 1900; y--) appendOption(els.buildYear, String(y), `${y}年`);
+}
+function initFloors() {
+  clearOptions(els.totalFloors, "選択してください");
+  clearOptions(els.floor, "選択してください");
+  for (let f = 1; f <= 100; f++) {
+    appendOption(els.totalFloors, String(f), `${f}階`);
+    appendOption(els.floor, String(f), `${f}階`);
+  }
+}
 
-// ------------------- normalizers（形式差異を吸収） -------------------
+// ---------- normalizers ----------
 function normalizeCityIndex(data) {
   const out = [];
   if (!data) return out;
-
   if (Array.isArray(data)) {
     data.forEach((it) => {
       const name = it?.name_ja || it?.name || it?.label || it?.title || "";
@@ -91,7 +97,6 @@ function normalizeCityIndex(data) {
     });
     return out;
   }
-
   if (Array.isArray(data.cities)) {
     data.cities.forEach((c) => {
       const name = c?.name_ja || c?.name || c?.label || "";
@@ -116,26 +121,21 @@ function normalizeCityIndex(data) {
     });
     return out;
   }
-
   Object.entries(data).forEach(([name, code]) => {
     if (name && (code || code === 0)) out.push({ name, code: String(code) });
   });
   return out;
 }
-
 function normalizeTowns(data) {
   let arr = [];
   if (!data) return arr;
-
-  if (Array.isArray(data)) {
-    arr = data;
-  } else {
+  if (Array.isArray(data)) arr = data;
+  else {
     const key = ["towns", "neighborhoods", "areas", "list", "data"].find(
       (k) => Array.isArray(data[k])
     );
     arr = key ? data[key] : [];
   }
-
   return arr
     .map((t) => {
       const name = t?.town || t?.name || t?.label || t?.title;
@@ -145,11 +145,9 @@ function normalizeTowns(data) {
     })
     .filter(Boolean);
 }
-
 function normalizeLinesIndex(data) {
   const out = [];
   if (!data) return out;
-
   if (Array.isArray(data.lines)) {
     data.lines.forEach((l) => {
       const file = l?.file || (l?.code ? `${l.code}.json` : "");
@@ -158,26 +156,17 @@ function normalizeLinesIndex(data) {
     });
     return out;
   }
-
   Object.entries(data).forEach(([name, file]) => {
     if (name && file) out.push({ name, file: String(file) });
   });
   return out;
 }
-
 function normalizeStations(data) {
-  // ★ name_ja に対応（駅名が出ない原因はここ）
   let arr = [];
   if (!data) return arr;
-
-  if (Array.isArray(data)) {
-    arr = data;
-  } else if (Array.isArray(data.stations)) {
-    arr = data.stations;
-  } else if (Array.isArray(data.list)) {
-    arr = data.list;
-  }
-
+  if (Array.isArray(data)) arr = data;
+  else if (Array.isArray(data.stations)) arr = data.stations;
+  else if (Array.isArray(data.list)) arr = data.list;
   return arr
     .map((s) => {
       const name = s?.station || s?.name_ja || s?.name || s?.title;
@@ -187,13 +176,10 @@ function normalizeStations(data) {
     .filter(Boolean);
 }
 
-// ------------------- 住所 -------------------
+// ---------- loaders ----------
 async function loadCities() {
-  if (!els.city || !els.town || !els.chome) return;
-
   const data = await getJSON(`${ADDRESS_BASE}/index.json`);
   const cities = normalizeCityIndex(data);
-
   clearOptions(els.city, "市区町村を選択");
   cities.forEach((c) => appendOption(els.city, c.code, c.name));
 
@@ -205,14 +191,12 @@ async function loadCities() {
 
     const townsRaw = await getJSON(`${ADDRESS_BASE}/${encodeURIComponent(code)}.json`);
     const towns = normalizeTowns(townsRaw);
-
     towns.forEach((t) => appendOption(els.town, t.name, t.name));
 
     els.town.onchange = () => {
       clearOptions(els.chome, "丁目を選択");
       const selected = towns.find((x) => x.name === els.town.value);
-      const chomes = selected?.chomes ?? [];
-      chomes.forEach((c) => {
+      (selected?.chomes ?? []).forEach((c) => {
         const num = typeof c === "number" ? c : String(c).replace(/丁目?$/u, "");
         const label = typeof c === "number" ? `${c}丁目` : String(c);
         appendOption(els.chome, String(num), label);
@@ -220,14 +204,9 @@ async function loadCities() {
     };
   };
 }
-
-// ------------------- 鉄道 -------------------
 async function loadLines() {
-  if (!els.line || !els.station) return;
-
   const idx = await getJSON(`${RAIL_BASE}/index.json`);
   const lines = normalizeLinesIndex(idx);
-
   clearOptions(els.line, "路線を選択");
   lines.forEach((l) => appendOption(els.line, l.file, l.name));
 
@@ -235,32 +214,34 @@ async function loadLines() {
     clearOptions(els.station, "駅を選択");
     const file = els.line.value;
     if (!file) return;
-
     const stationsRaw = await getJSON(`${RAIL_BASE}/${encodeURIComponent(file)}`);
     const stations = normalizeStations(stationsRaw);
-
     stations.forEach((s) => appendOption(els.station, s.name, s.name));
   };
 }
 
-// ------------------- 初期化 -------------------
+// ---------- boot ----------
 async function bootstrap() {
   try {
     initWalkSelect();
     initUserTypeToggle();
+    initYears();
+    initFloors();
     await Promise.all([loadCities(), loadLines()]);
   } catch (e) {
     console.error(e);
-    alert("初期データの取得に失敗しました。ページを更新して再試行してください。");
+    if (els.errorBox) {
+      els.errorBox.style.display = "block";
+      els.errorBox.textContent = "初期データの取得に失敗しました。再読み込みしてください。";
+    } else {
+      alert("初期データの取得に失敗しました。");
+    }
   }
 }
-
 document.addEventListener("DOMContentLoaded", bootstrap);
 
-// ------------------- 送信ダミー -------------------
-if (els.submitBtn) {
-  els.submitBtn.addEventListener("click", (e) => {
-    e.preventDefault();
-    alert("送信処理は後で実装します（UI動作確認用）");
-  });
-}
+// 送信（ダミー）
+els?.submitBtn?.addEventListener("click", (e) => {
+  e.preventDefault();
+  alert("送信処理は後で実装します（UI動作確認用）");
+});
