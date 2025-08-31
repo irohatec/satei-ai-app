@@ -1,108 +1,99 @@
 <!DOCTYPE html>
 <html lang="ja">
 <head>
-  <meta charset="UTF-8" />
-  <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
-  <title>不動産 簡易査定アプリ</title>
-  <!-- 外部スタイル（次ステップで style.css を作成） -->
-  <link rel="stylesheet" href="./style.css" />
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>不動産 簡易査定（リアルタイム概算）</title>
+  <link rel="stylesheet" href="style.css">
 </head>
 <body>
-  <header class="container">
-    <h1>不動産 簡易査定アプリ</h1>
-    <p class="note">最小入力で概算レンジを表示します（MVP / v1ロジック）。</p>
+  <header>
+    <h1>不動産 簡易査定（リアルタイム概算）</h1>
   </header>
 
-  <main class="container grid">
-    <!-- 査定フォーム -->
+  <!-- エラー要約 -->
+  <div id="error-summary" class="error-summary" style="display:none;"></div>
+
+  <!-- 概算価格カード -->
+  <div id="price-card" class="sticky-card">
+    <h2>概算価格</h2>
+    <p id="price-display">-- 円</p>
+    <small id="price-range"></small>
+  </div>
+
+  <main>
+    <!-- STEP0: 区分 -->
     <section class="card">
-      <h2>① 査定入力</h2>
-      <form id="estimate-form" autocomplete="on">
-        <div class="row">
-          <label for="pref">都道府県</label>
-          <input id="pref" name="pref" placeholder="広島県" required />
-        </div>
-        <div class="row">
-          <label for="city">市区町村</label>
-          <input id="city" name="city" placeholder="広島市中区" required />
-        </div>
-        <div class="row">
-          <label for="town">町名</label>
-          <input id="town" name="town" placeholder="紙屋町" required />
-        </div>
-        <div class="row">
-          <label for="chome">丁目</label>
-          <input id="chome" name="chome" placeholder="1" />
-        </div>
-
-        <div class="row">
-          <label for="nearest_station">最寄駅</label>
-          <input id="nearest_station" name="nearest_station" placeholder="紙屋町東" required />
-        </div>
-        <div class="row">
-          <label for="walk_minutes">徒歩（分）</label>
-          <input id="walk_minutes" name="walk_minutes" type="number" min="0" max="60" value="7" required />
-        </div>
-
-        <div class="row">
-          <label for="building_year">築年（西暦）</label>
-          <input id="building_year" name="building_year" type="number" min="1900" max="2099" value="2003" required />
-        </div>
-
-        <div class="row">
-          <label for="floor_area_sqm">専有面積（㎡）</label>
-          <input id="floor_area_sqm" name="floor_area_sqm" type="number" step="0.01" value="65.2" required />
-        </div>
-
-        <div class="row">
-          <label for="lot_area_sqm">土地面積（㎡）</label>
-          <input id="lot_area_sqm" name="lot_area_sqm" type="number" step="0.01" value="0" />
-        </div>
-
-        <div class="actions">
-          <button type="submit" id="btn-estimate">査定を実行</button>
-          <button type="reset">リセット</button>
-        </div>
-      </form>
-
-      <div id="estimate-result" class="result" aria-live="polite"></div>
+      <h2>STEP0: 区分を選択してください</h2>
+      <label><input type="radio" name="userType" value="個人" checked> 個人</label>
+      <label><input type="radio" name="userType" value="法人"> 法人</label>
     </section>
 
-    <!-- お問い合わせ（リード） -->
+    <!-- STEP1: エリア -->
     <section class="card">
-      <h2>② お問い合わせ（任意）</h2>
-      <form id="lead-form" autocomplete="on">
-        <div class="row">
-          <label for="lead_name">お名前</label>
-          <input id="lead_name" name="name" placeholder="山下 太郎" />
-        </div>
-        <div class="row">
-          <label for="lead_email">メールアドレス</label>
-          <input id="lead_email" name="email" type="email" placeholder="taro@example.com" />
-        </div>
-        <div class="row">
-          <label for="lead_phone">電話番号</label>
-          <input id="lead_phone" name="phone" placeholder="080-xxxx-xxxx" />
-        </div>
-        <div class="row">
-          <label for="lead_message">メッセージ</label>
-          <textarea id="lead_message" name="message" rows="4" placeholder="査定結果の詳細を知りたい、など"></textarea>
-        </div>
+      <h2>STEP1: エリア</h2>
+      <label>都道府県 <input id="prefecture" type="text" value="広島県"></label>
+      <label>市区町村 <input id="city" type="text" placeholder="例：広島市中区"></label>
+      <label>町名 <input id="town" type="text"></label>
+      <label>丁目 <input id="chome" type="text"></label>
+    </section>
 
-        <div class="actions">
-          <button type="submit" id="btn-lead">問い合わせを送信</button>
-        </div>
-      </form>
+    <!-- STEP2: 物件 -->
+    <section class="card">
+      <h2>STEP2: 物件情報</h2>
+      <label>種別
+        <select id="type">
+          <option value="マンション">マンション</option>
+          <option value="戸建">戸建</option>
+          <option value="土地">土地</option>
+        </select>
+      </label>
+      <label>面積（㎡） <input id="area" type="number" min="10" max="500"></label>
+      <label>築年 <input id="year" type="number" min="1960" max="2025"></label>
+    </section>
 
-      <div id="lead-result" class="result" aria-live="polite"></div>
+    <!-- STEP3: 交通 -->
+    <section class="card">
+      <h2>STEP3: 交通</h2>
+      <label>路線 <input id="line" type="text" placeholder="例：広島電鉄 本線"></label>
+      <label>駅 <input id="station" type="text" placeholder="例：紙屋町東"></label>
+      <label>徒歩（分） <input id="walk" type="number" min="1" max="60"></label>
+    </section>
+
+    <!-- STEP4: 敷地・建物 -->
+    <section class="card">
+      <h2>STEP4: 敷地・建物</h2>
+      <label><input type="checkbox" id="corner"> 角地</label>
+      <label>採光面
+        <select id="aspect">
+          <option value="南">南</option>
+          <option value="東">東</option>
+          <option value="西">西</option>
+          <option value="北">北</option>
+        </select>
+      </label>
+      <label>構造
+        <select id="structure">
+          <option value="RC">RC</option>
+          <option value="木造">木造</option>
+          <option value="鉄骨">鉄骨</option>
+        </select>
+      </label>
+      <label>所在階 <input id="floor" type="number" min="1" max="20"></label>
+    </section>
+
+    <!-- STEP5: 連絡先 -->
+    <section class="card">
+      <h2>STEP5: メールアドレス</h2>
+      <label>メール <input id="email" type="email" required></label>
+      <button id="submit-btn">査定を送信</button>
     </section>
   </main>
 
-  <footer class="container">
-    <small>© 2025 Real Estate MVP</small>
+  <footer>
+    <p>&copy; 2025 不動産簡易査定アプリ</p>
   </footer>
 
-  <!-- アプリロジック（次ステップで app.js を作成） -->
-  <script src="./app.js" defer></script>
+  <script src="app.js"></script>
 </body>
 </html>
