@@ -1,104 +1,114 @@
 // server.js
-// ------------------------------------------------------------
-// エントリポイント（calc集約型 v0.3 構成）
-// 優先順: 静的 /app → API(動的に読み込み) → /health → 404 → エラーハンドラ
-// まだ routes や middlewares が無くても起動できる実装。
-// ------------------------------------------------------------
+// =============================================================================
+// データ公開版：/datasets を静的公開し、/app は従来どおり配信します。
+// - /            → /app/ にリダイレクト
+// - /app/*       → public/app を静的配信
+// - /datasets/*  → server/datasets を静的配信（←今回追加）
+// - /health      → 生存確認
+// - 404 / エラーハンドラ
+// =============================================================================
+
 import express from "express";
 import path from "path";
-import { fileURLToPath, pathToFileURL } from "url";
-import dotenv from "dotenv";
-import helmet from "helmet";
-import compression from "compression";
-import morgan from "morgan";
 import fs from "fs";
+import { fileURLToPath, pathToFileURL } from "url";
 
-// ==== env ====
-dotenv.config();
-
-// ==== __dirname 相当 ====
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 
-// ==== アプリ基本設定 ====
 const app = express();
-const PORT = process.env.PORT ? Number(process.env.PORT) : 3000;
 
-// ---- ミドルウェア（最低限） ----
-// ※ helmetのCSPはフロントのinlineスクリプト等と衝突しやすいので初期は無効化
-app.use(helmet({ contentSecurityPolicy: false, crossOriginEmbedderPolicy: false }));
-app.use(compression());
-app.use(morgan(process.env.NODE_ENV === "production" ? "combined" : "dev"));
-app.use(express.json({ limit: "1mb" }));
-app.use(express.urlencoded({ extended: true }));
+// -------------------------------------------------------------
+// 基本設定
+// -------------------------------------------------------------
+const PORT = process.env.PORT || 3000;
+const PUBLIC_APP_BASE = process.env.PUBLIC_APP_BASE || "/app";
 
-// ---- 静的配信（/app パスにぶら下げ、相対参照前提） ----
-const publicDir = path.join(__dirname, "public", "app");
-if (fs.existsSync(publicDir)) {
-  app.use("/app", express.static(publicDir, {
-    etag: true,
-    lastModified: true,
-    maxAge: process.env.NODE_ENV === "production" ? "7d" : 0
-  }));
-}
+// JSON ボディ
+app.use(express.json());
 
-// ---- ルート動的マウント（存在すれば読み込み） ----
-async function tryMountRoute(routePath, mountPoint) {
-  const abs = path.join(__dirname, routePath);
-  if (fs.existsSync(abs)) {
-    try {
-      const mod = await import(pathToFileURL(abs).href);
-      if (typeof mod.default === "function") {
-        app.use(mountPoint, mod.default);
-        console.log(`[mount] ${mountPoint} -> ${routePath}`);
-      } else {
-        console.warn(`[skip] ${routePath} はデフォルトエクスポート関数ではありません。`);
+// -------------------------------------------------------------
+// 静的配信（/app）
+// -------------------------------------------------------------
+const appStaticDir = path.join(__dirname, "public", "app");
+app.use(
+  PUBLIC_APP_BASE,
+  express.static(appStaticDir, {
+    index: "index.html",
+    maxAge: "1h",
+  })
+);
+
+// ルートアクセスは /app/ へ
+app.get("/", (_req, res) => {
+  res.redirect(PUBLIC_APP_BASE + "/");
+});
+
+// -------------------------------------------------------------
+// ★ 追加：/datasets を server/datasets から静的公開
+//   例）/datasets/address/hiroshima/index.json
+//       /datasets/address/hiroshima/34101.json
+//       /datasets/rail/hiroshima/index.json
+//       /datasets/rail/hiroshima/hiroden-honsen.json
+// -------------------------------------------------------------
+const datasetsDir = path.join(__dirname, "server", "datasets");
+app.use(
+  "/datasets",
+  express.static(datasetsDir, {
+    fallthrough: false, // 該当ファイルが無ければ 404 を返す
+    maxAge: "1d",
+    setHeaders: (res, filePath) => {
+      // JSON は明示しておく（ブラウザでの見え方安定）
+      if (filePath.endsWith(".json")) {
+        res.setHeader("Content-Type", "application/json; charset=utf-8");
       }
-    } catch (e) {
-      console.error(`[error] ${routePath} の読み込みに失敗:`, e.message);
-    }
-  } else {
-    console.warn(`[skip] ${routePath} は未作成です。`);
+    },
+  })
+);
+
+// -------------------------------------------------------------
+// （任意）既存 API ルートの自動マウント（存在する場合のみ）
+//   server/routes/estimate.js / lead.js が無い場合でもエラーにしない
+// -------------------------------------------------------------
+async function tryMountRouter(relPath, mountPath) {
+  const abs = path.join(__dirname, relPath);
+  if (fs.existsSync(abs)) {
+    const mod = await import(pathToFileURL(abs).href);
+    if (mod.default) app.use(mountPath, mod.default);
   }
 }
+await tryMountRouter("server/routes/estimate.js", "/estimate");
+await tryMountRouter("server/routes/lead.js", "/lead");
 
-// /estimate と /lead は次ファイル以降で実装予定
-await tryMountRoute("server/routes/estimate.js", "/estimate");
-await tryMountRoute("server/routes/lead.js", "/lead");
-
-// ---- ヘルスチェック ----
-app.get("/health", (req, res) => {
+// -------------------------------------------------------------
+// ヘルスチェック
+// -------------------------------------------------------------
+app.get("/health", (_req, res) => {
   res.json({
     ok: true,
     env: process.env.NODE_ENV || "development",
-    timestamp: new Date().toISOString()
+    timestamp: new Date().toISOString(),
   });
 });
 
-// ---- 404（静的・APIのどれにも該当しない場合） ----
-app.use((req, res, next) => {
-  if (req.path === "/" || req.path === "/index.html") {
-    // ルートに来たら /app/ に誘導（UIは /app/index.html を想定）
-    return res.redirect(302, "/app/");
-  }
+// -------------------------------------------------------------
+// 404
+// -------------------------------------------------------------
+app.use((req, res) => {
   res.status(404).json({ ok: false, error: "NOT_FOUND", path: req.path });
 });
 
-// ---- 簡易エラーハンドラ（middlewares/errors.js 作成前の一時版） ----
-/* eslint-disable no-unused-vars */
-app.use((err, req, res, next) => {
-  console.error("[unhandled]", err);
-  const status = err?.status || 500;
-  res.status(status).json({
-    ok: false,
-    error: err?.code || "INTERNAL_ERROR",
-    message: process.env.NODE_ENV === "production" ? "Server Error" : String(err?.message || err)
-  });
+// -------------------------------------------------------------
+// エラーハンドラ
+// -------------------------------------------------------------
+app.use((err, _req, res, _next) => {
+  console.error("[ERROR]", err);
+  res.status(500).json({ ok: false, error: "INTERNAL_SERVER_ERROR" });
 });
-/* eslint-enable no-unused-vars */
 
-// ---- サーバ起動 ----
+// -------------------------------------------------------------
+// 起動
+// -------------------------------------------------------------
 app.listen(PORT, () => {
   console.log(`Server running on http://localhost:${PORT}`);
-  console.log(`UI: http://localhost:${PORT}/app/`);
 });
