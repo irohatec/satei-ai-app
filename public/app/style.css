@@ -1,323 +1,68 @@
-/* ==========================================================================
-   不動産 簡易査定アプリ - スタイリッシュテーマ
-   --------------------------------------------------------------------------
-   - 余白と読みやすさを最優先にしたミニマルUI
-   - セクション（.card）はカード化、フォームは2〜3列に自動可変
-   - 入力パーツはくっきり・フォーカス時はアクセントで視認性UP
-   - モバイル優先 → 600px / 960pxで段組み最適化
-   ========================================================================== */
-
-/* ---------- Theme Variables ---------- */
-:root {
-  --bg:           #f7f8fb;
-  --card:         #ffffff;
-  --text:         #0f172a;  /* slate-900 */
-  --muted:        #6b7280;  /* gray-500 */
-  --border:       #e5e7eb;  /* gray-200 */
-  --accent:       #2563eb;  /* blue-600 */
-  --accent-2:     #1d4ed8;  /* blue-700 */
-  --ring:         rgba(37,99,235,.35);
-  --shadow:       0 12px 28px rgba(2,6,23,.08);
-
-  --radius:       14px;
-  --radius-sm:    10px;
-  --space-1:      6px;
-  --space-2:      10px;
-  --space-3:      14px;
-  --space-4:      18px;
-  --space-5:      24px;
-  --space-6:      32px;
-  --space-7:      44px;
-
-  --font-sans: ui-sans-serif, -apple-system, system-ui, "Segoe UI",
-               Roboto, "Helvetica Neue", Arial, "Noto Sans JP",
-               "Hiragino Kaku Gothic ProN", Meiryo, "Apple Color Emoji",
-               "Segoe UI Emoji", "Segoe UI Symbol";
+:root{
+  --bg:#f7f9fb;
+  --card:#fff;
+  --text:#111827;
+  --muted:#6b7280;
+  --brand:#2563eb;
+  --ring:#c7d2fe;
+  --border:#e5e7eb;
+  --danger:#dc2626;
 }
 
-/* ---------- Base Reset ---------- */
-*,
-*::before,
-*::after { box-sizing: border-box; }
+*{box-sizing:border-box}
+html,body{margin:0;padding:0;background:var(--bg);color:var(--text);font:16px/1.6 -apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,"Hiragino Sans","Noto Sans JP","Yu Gothic UI","Yu Gothic",Meiryo,sans-serif}
 
-html, body {
-  height: 100%;
-}
+header{padding:20px}
+h1{margin:0;font-size:24px;font-weight:700}
+h2{margin:0 0 10px 0;font-size:18px}
 
-html { scroll-behavior: smooth; }
+main{max-width:1040px;margin:0 auto;padding:0 16px 48px}
 
-body {
-  margin: 0;
-  background: var(--bg);
-  color: var(--text);
-  font-family: var(--font-sans);
-  line-height: 1.65;
-  -webkit-font-smoothing: antialiased;
-  -moz-osx-font-smoothing: grayscale;
+.card{
+  background:var(--card);
+  border:1px solid var(--border);
+  border-radius:14px;
+  padding:18px;
+  margin:14px 0;
+  box-shadow:0 2px 10px rgb(0 0 0 / 4%);
 }
 
-/* 選択色 */
-::selection {
-  background: rgba(37,99,235,.14);
+.grid{display:grid;grid-template-columns:repeat(12,1fr);gap:12px}
+.card label{display:block;margin-bottom:10px}
+.card input,.card select,.card textarea{
+  width:100%;padding:10px 12px;border:1px solid var(--border);border-radius:10px;background:#fff;outline:none
 }
+.card input:focus,.card select:focus,.card textarea:focus{border-color:var(--brand);box-shadow:0 0 0 3px var(--ring)}
+.small{color:var(--muted);font-size:12px}
+.inline{display:flex;gap:12px;align-items:center}
+.span-12{width:100%}
+.span-8{width:66%}
+.span-4{width:32%}
 
-/* ---------- Layout ---------- */
-header {
-  position: sticky;
-  top: 0;
-  z-index: 40;
-  backdrop-filter: saturate(140%) blur(6px);
-  background: color-mix(in srgb, var(--bg) 82%, #fff 18%);
-  border-bottom: 1px solid var(--border);
-}
+.required{color:var(--danger);font-weight:600}
 
-header h1 {
-  margin: 0;
-  padding: var(--space-5) var(--space-6);
-  font-size: clamp(18px, 2.2vw, 22px);
-  font-weight: 700;
-  letter-spacing: .02em;
+.actions{display:flex;justify-content:flex-end;margin-top:6px}
+button{
+  cursor:pointer;border:0;border-radius:999px;background:var(--brand);color:#fff;
+  padding:12px 18px;font-weight:700;box-shadow:0 8px 20px rgb(37 99 235 / 20%);
 }
+button:active{transform:translateY(1px)}
+.btn-icon{display:inline-flex;align-items:center;gap:8px}
+.btn-icon svg{width:20px;height:20px;fill:#fff;display:block}
 
-main {
-  width: min(1100px, 94vw);
-  margin: var(--space-6) auto var(--space-7);
-  display: grid;
-  gap: var(--space-6);
-}
+textarea#message{width:100%;min-height:160px;resize:vertical}
 
-/* セクションカード */
-.card {
-  background: var(--card);
-  border: 1px solid var(--border);
-  border-radius: var(--radius);
-  box-shadow: var(--shadow);
-  padding: clamp(18px, 2.2vw, 24px);
-  display: grid;
-  gap: var(--space-4);
-}
+/* レイアウト: カード内をグリッド化（小画面でも崩れにくく） */
+.card{display:grid;grid-template-columns:repeat(12,1fr);gap:12px}
+.card h2{grid-column:1/-1}
+.card > label,.card > .inline,.card > .actions,.card > p,.card > textarea{grid-column:span 4}
+.card > .span-8{grid-column:span 8}
+.card > .span-12{grid-column:1/-1}
+.card > textarea{grid-column:1/-1}
 
-.card h2 {
-  margin: 0 0 var(--space-1) 0;
-  font-size: clamp(16px, 2vw, 18px);
-  font-weight: 700;
-  letter-spacing: .02em;
-}
-
-/* カード内のフォームエリアを自動段組み */
-.card label,
-.card .field {
-  display: grid;
-  gap: 8px;
-}
-
-/* 広い画面ではカード内を複数列に */
-@media (min-width: 720px) {
-  .card {
-    grid-template-columns: repeat(12, 1fr);
-  }
-  .card h2 {
-    grid-column: 1 / -1;
-  }
-  /* ラベルをデフォルトで 4 カラム幅に */
-  .card label,
-  .card .field {
-    grid-column: span 4;
-  }
-  /* 横に長いもの（メール、会社名など）は 8 カラム使えるように */
-  label[for="email"],
-  #businessFields label,
-  .span-8 { grid-column: span 8; }
-  /* 1列にまたがせたいとき用 */
-  .span-12 { grid-column: 1 / -1; }
-}
-
-/* ---------- Form Controls ---------- */
-input[type="text"],
-input[type="tel"],
-input[type="email"],
-input[type="number"],
-select,
-textarea {
-  appearance: none;
-  width: 100%;
-  border: 1px solid var(--border);
-  border-radius: var(--radius-sm);
-  background: #fff;
-  padding: 12px 14px;
-  font-size: 15px;
-  color: var(--text);
-  transition: border-color .15s ease, box-shadow .15s ease, transform .05s ease;
-}
-
-textarea { min-height: 120px; resize: vertical; }
-
-/* プレースホルダ */
-::placeholder { color: color-mix(in srgb, var(--muted), #fff 10%); }
-
-/* ホバー時のほんのりリフト */
-input:hover,
-select:hover,
-textarea:hover {
-  border-color: color-mix(in srgb, var(--border), var(--accent) 22%);
-}
-
-/* フォーカスリング */
-input:focus,
-select:focus,
-textarea:focus {
-  outline: none;
-  border-color: var(--accent);
-  box-shadow: 0 0 0 3px var(--ring);
-}
-
-/* 無効 */
-input[disabled],
-select[disabled],
-textarea[disabled] {
-  background: #f3f4f6;
-  color: #9ca3af;
-  cursor: not-allowed;
-}
-
-/* チェック系 */
-input[type="checkbox"],
-input[type="radio"] {
-  inline-size: 18px;
-  block-size: 18px;
-  accent-color: var(--accent);
-}
-
-/* ラジオ／チェックの横並び補助 */
-.inline {
-  display: flex;
-  align-items: center;
-  gap: 14px;
-}
-.inline label {
-  display: inline-flex;
-  align-items: center;
-  gap: 8px;
-  margin: 2px 12px 2px 0;
-}
-
-/* 法人用フィールドのブロック */
-#businessFields {
-  padding: var(--space-3);
-  border: 1px dashed var(--border);
-  border-radius: var(--radius-sm);
-  background: #fafafa;
-}
-
-/* ---------- Buttons ---------- */
-button,
-.button {
-  appearance: none;
-  cursor: pointer;
-  border: 0;
-  border-radius: 999px;
-  background: linear-gradient(180deg, var(--accent), var(--accent-2));
-  color: #fff;
-  padding: 12px 18px;
-  font-weight: 700;
-  letter-spacing: .02em;
-  font-size: 15px;
-  box-shadow: 0 10px 20px rgba(37,99,235,.24), inset 0 1px 0 rgba(255,255,255,.15);
-  transition: transform .06s ease, filter .2s ease, box-shadow .2s ease;
-}
-
-button:hover,
-.button:hover {
-  filter: saturate(1.06);
-  box-shadow: 0 12px 28px rgba(37,99,235,.28), inset 0 1px 0 rgba(255,255,255,.2);
-}
-
-button:active,
-.button:active {
-  transform: translateY(1px);
-}
-
-/* ボタンの行を右寄せしたい時に */
-.actions {
-  display: flex;
-  justify-content: flex-end;
-  gap: var(--space-3);
-}
-
-/* ---------- Helper / Feedback ---------- */
-.error-summary {
-  width: min(1100px, 94vw);
-  margin: var(--space-6) auto 0;
-  padding: var(--space-4) var(--space-5);
-  border: 1px solid #fecaca;
-  background: #fff1f2;
-  color: #7f1d1d;
-  border-radius: var(--radius);
-  box-shadow: var(--shadow);
-}
-
-.success {
-  border: 1px solid #bbf7d0;
-  background: #ecfdf5;
-  color: #065f46;
-}
-
-/* 小さな注釈 */
-.small,
-small {
-  color: var(--muted);
-  font-size: 12px;
-}
-
-/* ---------- Sticky Card（使っている場合） ---------- */
-.sticky-card {
-  position: sticky;
-  top: 72px;
-  z-index: 30;
-  width: min(1100px, 94vw);
-  margin: 0 auto var(--space-6);
-  padding: var(--space-4) var(--space-5);
-  border: 1px solid var(--border);
-  border-radius: var(--radius);
-  background: #fff;
-  box-shadow: var(--shadow);
-}
-.sticky-card h2 {
-  margin: 0 0 6px;
-  font-size: 16px;
-  font-weight: 700;
-}
-#price-display {
-  margin: 0;
-  font-size: clamp(22px, 3.4vw, 32px);
-  font-weight: 800;
-  letter-spacing: .02em;
-}
-#price-range {
-  color: var(--muted);
-}
-
-/* ---------- Footer ---------- */
-footer {
-  width: min(1100px, 94vw);
-  margin: var(--space-7) auto var(--space-6);
-  color: var(--muted);
-  font-size: 13px;
-  text-align: center;
-}
-
-/* ---------- Transitions / Animations ---------- */
-.fade-in {
-  animation: fadeIn .28s ease-out both;
-}
-@keyframes fadeIn {
-  from { opacity: 0; transform: translateY(4px); }
-  to   { opacity: 1; transform: translateY(0); }
-}
-
-/* ---------- Narrow Screens ---------- */
-@media (max-width: 599px) {
-  header h1 { padding: var(--space-4) var(--space-5); }
-  .actions { justify-content: stretch; }
-  button, .button { width: 100%; }
+/* モバイル */
+@media (max-width:720px){
+  .span-8,.span-4{width:100%}
+  .card{grid-template-columns:1fr}
+  .card > label,.card > .inline,.card > .actions,.card > p,.card > textarea{grid-column:1/-1}
 }
