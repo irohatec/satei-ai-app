@@ -123,7 +123,7 @@
             </select>
           </div>
           <div>
-            <label>構造</label>
+            <label>構造（補正）</label>
             <select id="structure">
               <option value="">選択してください</option>
               <option>木造</option><option>ブロック</option><option>鉄骨</option>
@@ -135,11 +135,11 @@
             <select id="totalFloors"></select>
           </div>
           <div>
-            <label>所在階</label>
+            <label>所在階（マンション補正）</label>
             <select id="floor"></select>
           </div>
           <div>
-            <label>採光面（最大開口面）</label>
+            <label>採光面（補正）</label>
             <select id="aspect">
               <option value="">選択してください</option>
               <option>北</option><option>北東</option><option>東</option><option>南東</option>
@@ -147,18 +147,24 @@
             </select>
           </div>
           <div class="checkbox">
-            <label><input type="checkbox" id="isCorner" /> 角地</label>
+            <label><input type="checkbox" id="isCorner" /> 角地（補正）</label>
           </div>
         </div>
       </section>
 
-      <!-- 査定結果 -->
+      <!-- 査定結果（即時反映） -->
       <section id="resultCard" class="card">
         <h2>査定結果</h2>
-        <div class="result-box"><span id="resultPrice">— 万円</span></div>
+        <div class="result-box">
+          <div class="result-main"><span id="resultMid">—</span><span class="unit">万円</span></div>
+          <div class="result-range">
+            <span class="min">最安値 <b id="resultMin">—</b> 万円</span>
+            <span class="max">最高値 <b id="resultMax">—</b> 万円</span>
+          </div>
+        </div>
       </section>
 
-      <!-- 送信 -->
+      <!-- メール送信（レンジ＋近隣事例を送付） -->
       <section class="card">
         <h2>査定結果を送る</h2>
         <div class="grid1">
