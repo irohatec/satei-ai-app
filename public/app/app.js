@@ -1,17 +1,10 @@
 // public/app/app.js
 // ============================================================================
-// 公開データは /app/datasets/... から直接 fetch します（server には依存しません）
-// 必要なID（index.html）は以下を想定：
-// - 利用者種別: input[name="userType"]（"personal" / "business"）
-// - 事業者用ブロック: #businessFields, 会社名: #companyName, 電話: #phone
-// - 住所: #citySelect, #townSelect, #chomeSelect
-// - 鉄道: #lineSelect, #stationSelect, #walkSelect
-// - 物件: #propertyType, #areaSqm, #structure, #totalFloors, #floor, #isCorner, #aspect
-// - 連絡: #email
-// - 送信: #submitBtn
+// データは /app/datasets/... から直接 fetch（server 依存なし）
+// 住所/路線の JSON 形式が多少違っても吸収する“堅牢版”
 // ============================================================================
 
-const PREF = "hiroshima"; // 公開データは hiroshima 固定
+const PREF = "hiroshima";
 const DATA_BASE = "/app/datasets";
 const ADDRESS_BASE = `${DATA_BASE}/address/${PREF}`;
 const RAIL_BASE = `${DATA_BASE}/rail/${PREF}`;
@@ -42,7 +35,7 @@ const els = {
   submitBtn: document.getElementById("submitBtn"),
 };
 
-// ---------- utils ----------
+// ------------------------- utils -------------------------
 function clearOptions(selectEl, placeholder = "選択してください") {
   if (!selectEl) return;
   selectEl.innerHTML = "";
@@ -62,9 +55,7 @@ function appendOption(selectEl, value, label) {
 
 async function getJSON(url) {
   const res = await fetch(url, { cache: "no-cache" });
-  if (!res.ok) {
-    throw new Error(`fetch failed: ${url} (${res.status})`);
-  }
+  if (!res.ok) throw new Error(`fetch failed: ${url} (${res.status})`);
   return res.json();
 }
 
@@ -87,26 +78,141 @@ function initUserTypeToggle() {
   toggle();
 }
 
-// ---------- 住所 ----------
+// ------------------- normalizers（形式差異を吸収） -------------------
+function normalizeCityIndex(data) {
+  // 受け入れ例:
+  // ① { "広島市中区": "34101", ... }（辞書）
+  // ② { cities:[{name,code}, ...] } / { wards:[{name|name_ja,code}, ...] }
+  // ③ { list:[{label,value}, ...] }
+  const out = [];
+  if (!data) return out;
+
+  if (Array.isArray(data)) {
+    // まれに配列で来るケース
+    data.forEach((it) => {
+      const name = it?.name_ja || it?.name || it?.label || it?.title || "";
+      const code = it?.code ?? it?.value ?? "";
+      if (name && code) out.push({ name, code: String(code) });
+    });
+    return out;
+  }
+
+  // オブジェクト
+  if (Array.isArray(data.cities)) {
+    data.cities.forEach((c) => {
+      const name = c?.name_ja || c?.name || c?.label || "";
+      const code = c?.code ?? c?.value ?? "";
+      if (name && code) out.push({ name, code: String(code) });
+    });
+    return out;
+  }
+  if (Array.isArray(data.wards)) {
+    data.wards.forEach((w) => {
+      const name = w?.name_ja || w?.name || w?.label || "";
+      const code = w?.code ?? w?.value ?? "";
+      if (name && code) out.push({ name, code: String(code) });
+    });
+    return out;
+  }
+  if (Array.isArray(data.list)) {
+    data.list.forEach((w) => {
+      const name = w?.name_ja || w?.name || w?.label || "";
+      const code = w?.code ?? w?.value ?? "";
+      if (name && code) out.push({ name, code: String(code) });
+    });
+    return out;
+  }
+
+  // 辞書形式
+  Object.entries(data).forEach(([name, code]) => {
+    if (name && (code || code === 0)) out.push({ name, code: String(code) });
+  });
+  return out;
+}
+
+function normalizeTowns(data) {
+  // 受け入れ例:
+  // ① [ { town:"大手町", chome:[...] }, ... ]（配列）
+  // ② { towns:[{ name|town, chome|chomes|blocks:[...] }, ...] }
+  // ③ { list:[{ name, chome }, ...] } / { neighborhoods:[...] } など
+  let arr = [];
+  if (!data) return arr;
+
+  if (Array.isArray(data)) {
+    arr = data;
+  } else {
+    const key = ["towns", "neighborhoods", "areas", "list", "data"].find(
+      (k) => Array.isArray(data[k])
+    );
+    arr = key ? data[key] : [];
+  }
+
+  return arr
+    .map((t) => {
+      const name = t?.town || t?.name || t?.label || t?.title;
+      const ch = t?.chome || t?.chomes || t?.blocks || t?.丁目 || [];
+      if (!name) return null;
+      return { name, chomes: Array.isArray(ch) ? ch : [] };
+    })
+    .filter(Boolean);
+}
+
+function normalizeLinesIndex(data) {
+  // 受け入れ例:
+  // ① { "広電 本線": "hiroden-honsen.json", ... }
+  // ② { lines:[{ code, name_ja|name, file }, ...] }
+  const out = [];
+  if (!data) return out;
+
+  if (Array.isArray(data.lines)) {
+    data.lines.forEach((l) => {
+      const file = l?.file || (l?.code ? `${l.code}.json` : "");
+      const name = l?.name_ja || l?.name || l?.label || l?.code || "";
+      if (file && name) out.push({ name, file });
+    });
+    return out;
+  }
+
+  // 辞書形式
+  Object.entries(data).forEach(([name, file]) => {
+    if (name && file) out.push({ name, file: String(file) });
+  });
+  return out;
+}
+
+function normalizeStations(data) {
+  // 受け入れ例:
+  // ① [ { station:"紙屋町東", lat, lng }, ... ]
+  // ② { stations:[{ station|name|title, ... }, ...] }
+  let arr = [];
+  if (!data) return arr;
+
+  if (Array.isArray(data)) {
+    arr = data;
+  } else if (Array.isArray(data.stations)) {
+    arr = data.stations;
+  } else if (Array.isArray(data.list)) {
+    arr = data.list;
+  }
+
+  return arr
+    .map((s) => {
+      const name = s?.station || s?.name || s?.title;
+      if (!name) return null;
+      return { name, lat: s?.lat ?? null, lng: s?.lng ?? null };
+    })
+    .filter(Boolean);
+}
+
+// ------------------- 住所 -------------------
 async function loadCities() {
   if (!els.city || !els.town || !els.chome) return;
 
-  // 期待形: { "広島市中区": "34101", ... }（オブジェクト）
-  // 将来互換: { "cities":[{"name":"広島市中区","code":"34101"}, ...] } にも対応
-  const idx = await getJSON(`${ADDRESS_BASE}/index.json`);
+  const data = await getJSON(`${ADDRESS_BASE}/index.json`);
+  const cities = normalizeCityIndex(data);
 
   clearOptions(els.city, "市区町村を選択");
-  if (idx && typeof idx === "object" && !Array.isArray(idx)) {
-    if (Array.isArray(idx.cities)) {
-      // 互換（配列）
-      idx.cities.forEach((c) => appendOption(els.city, String(c.code), c.name));
-    } else {
-      // 通常（辞書）
-      Object.entries(idx).forEach(([name, code]) =>
-        appendOption(els.city, String(code), name)
-      );
-    }
-  }
+  cities.forEach((c) => appendOption(els.city, c.code, c.name));
 
   els.city.onchange = async () => {
     clearOptions(els.town, "町名を選択");
@@ -114,24 +220,18 @@ async function loadCities() {
     const code = els.city.value;
     if (!code) return;
 
-    // 期待形: [ { town:"大手町", chome:["1丁目","2丁目"], lat:..., lng:... }, ... ]
-    const towns = await getJSON(`${ADDRESS_BASE}/${code}.json`);
-    if (!Array.isArray(towns)) return;
+    const townsRaw = await getJSON(`${ADDRESS_BASE}/${encodeURIComponent(code)}.json`);
+    const towns = normalizeTowns(townsRaw);
 
-    // 重複登録防止のため、後段 onChange を都度差し替え
-    els.town.onchange = null;
+    // 町名
+    towns.forEach((t) => appendOption(els.town, t.name, t.name));
 
-    towns.forEach((t) => {
-      if (!t || !t.town) return;
-      appendOption(els.town, t.town, t.town);
-    });
-
+    // 丁目（町が変わったら更新）
     els.town.onchange = () => {
       clearOptions(els.chome, "丁目を選択");
-      const selected = towns.find((x) => x.town === els.town.value);
-      const chomes = selected?.chome ?? [];
+      const selected = towns.find((x) => x.name === els.town.value);
+      const chomes = selected?.chomes ?? [];
       chomes.forEach((c) => {
-        // "1丁目" でも 1 でも受け入れ
         const num = typeof c === "number" ? c : String(c).replace(/丁目?$/u, "");
         const label = typeof c === "number" ? `${c}丁目` : String(c);
         appendOption(els.chome, String(num), label);
@@ -140,48 +240,29 @@ async function loadCities() {
   };
 }
 
-// ---------- 鉄道 ----------
+// ------------------- 鉄道 -------------------
 async function loadLines() {
   if (!els.line || !els.station) return;
 
-  // 期待形1: { "広電 本線": "hiroden-honsen.json", ... }（辞書）
-  // 期待形2: { "lines":[ { code, name_ja, file }, ... ] }（配列） ← こちらもサポート
   const idx = await getJSON(`${RAIL_BASE}/index.json`);
+  const lines = normalizeLinesIndex(idx);
 
   clearOptions(els.line, "路線を選択");
-
-  if (idx && typeof idx === "object" && !Array.isArray(idx)) {
-    if (Array.isArray(idx.lines)) {
-      idx.lines.forEach((l) => {
-        const file = l.file || `${l.code}.json`;
-        const name = l.name_ja || l.name || l.code;
-        appendOption(els.line, String(file), name);
-      });
-    } else {
-      Object.entries(idx).forEach(([name, file]) =>
-        appendOption(els.line, String(file), name)
-      );
-    }
-  }
+  lines.forEach((l) => appendOption(els.line, l.file, l.name));
 
   els.line.onchange = async () => {
     clearOptions(els.station, "駅を選択");
     const file = els.line.value;
     if (!file) return;
 
-    // 期待形: [ { station:"紙屋町東", lat:..., lng:... }, ... ]
-    const stations = await getJSON(`${RAIL_BASE}/${file}`);
-    if (!Array.isArray(stations)) return;
+    const stationsRaw = await getJSON(`${RAIL_BASE}/${encodeURIComponent(file)}`);
+    const stations = normalizeStations(stationsRaw);
 
-    stations.forEach((s) => {
-      const name = s?.station || s?.name || s?.title;
-      if (!name) return;
-      appendOption(els.station, name, name);
-    });
+    stations.forEach((s) => appendOption(els.station, s.name, s.name));
   };
 }
 
-// ---------- 初期化 ----------
+// ------------------- 初期化 -------------------
 async function bootstrap() {
   try {
     initWalkSelect();
@@ -195,7 +276,7 @@ async function bootstrap() {
 
 document.addEventListener("DOMContentLoaded", bootstrap);
 
-// ---------- 送信（ダミー） ----------
+// ------------------- 送信ダミー -------------------
 if (els.submitBtn) {
   els.submitBtn.addEventListener("click", (e) => {
     e.preventDefault();
