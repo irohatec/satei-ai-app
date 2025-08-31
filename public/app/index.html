@@ -1,247 +1,189 @@
-// /app データ直読み・堅牢版（駅 name_ja / 住所 wards 等も吸収）
-const PREF = "hiroshima";
-const DATA_BASE = "/app/datasets";
-const ADDRESS_BASE = `${DATA_BASE}/address/${PREF}`;
-const RAIL_BASE = `${DATA_BASE}/rail/${PREF}`;
+<!doctype html>
+<html lang="ja">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+  <title>不動産AI査定</title>
+  <link rel="stylesheet" href="./style.css" />
+</head>
+<body>
+  <header>
+    <h1>不動産AI査定</h1>
+  </header>
 
-const els = {
-  userTypeRadios: document.querySelectorAll('input[name="userType"]'),
-  businessFields: document.getElementById("businessFields"),
-  companyName: document.getElementById("companyName"),
-  phone: document.getElementById("phone"),
+  <main>
+    <!-- ご利用の方 -->
+    <section class="card">
+      <h2>ご利用の方</h2>
+      <div class="inline span-12">
+        <label class="inline"><input type="radio" name="userType" value="personal" checked /><span>個人</span></label>
+        <label class="inline"><input type="radio" name="userType" value="business" /><span>個人事業主または法人</span></label>
+      </div>
 
-  city: document.getElementById("citySelect"),
-  town: document.getElementById("townSelect"),
-  chome: document.getElementById("chomeSelect"),
+      <!-- 事業者向け（幅広） -->
+      <div id="businessFields" class="grid span-12" style="display:none">
+        <label class="span-8">会社名 <input id="companyName" type="text" placeholder="例）株式会社〇〇" /></label>
+        <label class="span-4">連絡先（電話） <input id="phone" type="tel" placeholder="例）080-1234-5678" /></label>
+      </div>
+    </section>
 
-  line: document.getElementById("lineSelect"),
-  station: document.getElementById("stationSelect"),
-  walk: document.getElementById("walkSelect"),
+    <!-- ご利用にあたって -->
+    <section class="card">
+      <h2>ご利用にあたって</h2>
+      <p class="small">
+        ※本アプリは、国土交通省のデータおよび都道府県地価調査データを基にAIが査定しています。<br />
+        ※商用利用の場合は、お名前と連絡先を記載してください。
+      </p>
+    </section>
 
-  propertyType: document.getElementById("propertyType"),
-  areaUnit: document.getElementById("areaUnit"),
-  landArea: document.getElementById("landArea"),
-  buildingArea: document.getElementById("buildingArea"),
-  buildYear: document.getElementById("buildYear"),
-  floorPlan: document.getElementById("floorPlan"),
-  structure: document.getElementById("structure"),
-  totalFloors: document.getElementById("totalFloors"),
-  floor: document.getElementById("floor"),
-  isCorner: document.getElementById("isCorner"),
-  aspect: document.getElementById("aspect"),
+    <!-- エリア -->
+    <section class="card">
+      <h2>エリア</h2>
+      <label>都道府県
+        <select id="prefSelect" disabled>
+          <option value="hiroshima" selected>広島県</option>
+        </select>
+        <small class="small">※今回は広島県に限定しています</small>
+      </label>
 
-  email: document.getElementById("email"),
-  message: document.getElementById("message"),
-  submitBtn: document.getElementById("submitBtn"),
-  errorBox: document.getElementById("errorBox"),
-};
+      <label>市区町村
+        <select id="citySelect"><option value="">市区町村を選択</option></select>
+      </label>
 
-// ---------- utils ----------
-function clearOptions(selectEl, placeholder = "選択してください") {
-  if (!selectEl) return;
-  selectEl.innerHTML = "";
-  const opt0 = document.createElement("option");
-  opt0.value = "";
-  opt0.textContent = placeholder;
-  selectEl.appendChild(opt0);
-}
-function appendOption(selectEl, value, label) {
-  if (!selectEl) return;
-  const opt = document.createElement("option");
-  opt.value = value;
-  opt.textContent = label;
-  selectEl.appendChild(opt);
-}
-async function getJSON(url) {
-  const res = await fetch(url, { cache: "no-cache" });
-  if (!res.ok) throw new Error(`fetch failed: ${url} (${res.status})`);
-  return res.json();
-}
-function initWalkSelect() {
-  clearOptions(els.walk, "選択してください");
-  for (let i = 1; i <= 60; i++) appendOption(els.walk, String(i), `${i}分`);
-}
-function initUserTypeToggle() {
-  const toggle = () => {
-    const v = document.querySelector('input[name="userType"]:checked')?.value;
-    const isBiz = v === "business";
-    els.businessFields.style.display = isBiz ? "block" : "none";
-    if (els.companyName) els.companyName.required = isBiz;
-    if (els.phone) els.phone.required = isBiz;
-  };
-  els.userTypeRadios.forEach((r) => r.addEventListener("change", toggle));
-  toggle();
-}
-function initYears() {
-  clearOptions(els.buildYear, "年を選択");
-  for (let y = 2025; y >= 1900; y--) appendOption(els.buildYear, String(y), `${y}年`);
-}
-function initFloors() {
-  clearOptions(els.totalFloors, "選択してください");
-  clearOptions(els.floor, "選択してください");
-  for (let f = 1; f <= 100; f++) {
-    appendOption(els.totalFloors, String(f), `${f}階`);
-    appendOption(els.floor, String(f), `${f}階`);
-  }
-}
+      <label>町名
+        <select id="townSelect"><option value="">町名を選択</option></select>
+      </label>
 
-// ---------- normalizers ----------
-function normalizeCityIndex(data) {
-  const out = [];
-  if (!data) return out;
-  if (Array.isArray(data)) {
-    data.forEach((it) => {
-      const name = it?.name_ja || it?.name || it?.label || it?.title || "";
-      const code = it?.code ?? it?.value ?? "";
-      if (name && code) out.push({ name, code: String(code) });
-    });
-    return out;
-  }
-  if (Array.isArray(data.cities)) {
-    data.cities.forEach((c) => {
-      const name = c?.name_ja || c?.name || c?.label || "";
-      const code = c?.code ?? c?.value ?? "";
-      if (name && code) out.push({ name, code: String(code) });
-    });
-    return out;
-  }
-  if (Array.isArray(data.wards)) {
-    data.wards.forEach((w) => {
-      const name = w?.name_ja || w?.name || w?.label || "";
-      const code = w?.code ?? w?.value ?? "";
-      if (name && code) out.push({ name, code: String(code) });
-    });
-    return out;
-  }
-  if (Array.isArray(data.list)) {
-    data.list.forEach((w) => {
-      const name = w?.name_ja || w?.name || w?.label || "";
-      const code = w?.code ?? w?.value ?? "";
-      if (name && code) out.push({ name, code: String(code) });
-    });
-    return out;
-  }
-  Object.entries(data).forEach(([name, code]) => {
-    if (name && (code || code === 0)) out.push({ name, code: String(code) });
-  });
-  return out;
-}
-function normalizeTowns(data) {
-  let arr = [];
-  if (!data) return arr;
-  if (Array.isArray(data)) arr = data;
-  else {
-    const key = ["towns", "neighborhoods", "areas", "list", "data"].find(
-      (k) => Array.isArray(data[k])
-    );
-    arr = key ? data[key] : [];
-  }
-  return arr
-    .map((t) => {
-      const name = t?.town || t?.name || t?.label || t?.title;
-      const ch = t?.chome || t?.chomes || t?.blocks || t?.丁目 || [];
-      if (!name) return null;
-      return { name, chomes: Array.isArray(ch) ? ch : [] };
-    })
-    .filter(Boolean);
-}
-function normalizeLinesIndex(data) {
-  const out = [];
-  if (!data) return out;
-  if (Array.isArray(data.lines)) {
-    data.lines.forEach((l) => {
-      const file = l?.file || (l?.code ? `${l.code}.json` : "");
-      const name = l?.name_ja || l?.name || l?.label || l?.code || "";
-      if (file && name) out.push({ name, file });
-    });
-    return out;
-  }
-  Object.entries(data).forEach(([name, file]) => {
-    if (name && file) out.push({ name, file: String(file) });
-  });
-  return out;
-}
-function normalizeStations(data) {
-  let arr = [];
-  if (!data) return arr;
-  if (Array.isArray(data)) arr = data;
-  else if (Array.isArray(data.stations)) arr = data.stations;
-  else if (Array.isArray(data.list)) arr = data.list;
-  return arr
-    .map((s) => {
-      const name = s?.station || s?.name_ja || s?.name || s?.title;
-      if (!name) return null;
-      return { name, lat: s?.lat ?? null, lng: s?.lng ?? null };
-    })
-    .filter(Boolean);
-}
+      <label>丁目
+        <select id="chomeSelect"><option value="">丁目を選択</option></select>
+      </label>
 
-// ---------- loaders ----------
-async function loadCities() {
-  const data = await getJSON(`${ADDRESS_BASE}/index.json`);
-  const cities = normalizeCityIndex(data);
-  clearOptions(els.city, "市区町村を選択");
-  cities.forEach((c) => appendOption(els.city, c.code, c.name));
+      <label class="span-8">番地・マンション名
+        <input id="addressDetail" type="text" placeholder="例）1-2-3 マンション名　601号" />
+      </label>
+    </section>
 
-  els.city.onchange = async () => {
-    clearOptions(els.town, "町名を選択");
-    clearOptions(els.chome, "丁目を選択");
-    const code = els.city.value;
-    if (!code) return;
+    <!-- 最寄り駅 -->
+    <section class="card">
+      <h2>最寄り駅</h2>
+      <label>路線
+        <select id="lineSelect"><option value="">路線を選択</option></select>
+      </label>
+      <label>駅
+        <select id="stationSelect"><option value="">駅を選択</option></select>
+      </label>
+      <label>徒歩分 <small class="small">（1分=80メートルの目安）</small>
+        <select id="walkSelect"><option value="">選択してください</option></select>
+      </label>
+    </section>
 
-    const townsRaw = await getJSON(`${ADDRESS_BASE}/${encodeURIComponent(code)}.json`);
-    const towns = normalizeTowns(townsRaw);
-    towns.forEach((t) => appendOption(els.town, t.name, t.name));
+    <!-- 物件情報 -->
+    <section class="card">
+      <h2>物件情報</h2>
 
-    els.town.onchange = () => {
-      clearOptions(els.chome, "丁目を選択");
-      const selected = towns.find((x) => x.name === els.town.value);
-      (selected?.chomes ?? []).forEach((c) => {
-        const num = typeof c === "number" ? c : String(c).replace(/丁目?$/u, "");
-        const label = typeof c === "number" ? `${c}丁目` : String(c);
-        appendOption(els.chome, String(num), label);
-      });
-    };
-  };
-}
-async function loadLines() {
-  const idx = await getJSON(`${RAIL_BASE}/index.json`);
-  const lines = normalizeLinesIndex(idx);
-  clearOptions(els.line, "路線を選択");
-  lines.forEach((l) => appendOption(els.line, l.file, l.name));
+      <label>種目 <span class="required">（必須）</span>
+        <select id="propertyType">
+          <option value="">選択してください</option>
+          <option value="land">土地</option>
+          <option value="house">戸建</option>
+          <option value="mansion">マンション</option>
+          <option value="building">売ビル</option>
+          <option value="apartment">売アパート</option>
+        </select>
+      </label>
 
-  els.line.onchange = async () => {
-    clearOptions(els.station, "駅を選択");
-    const file = els.line.value;
-    if (!file) return;
-    const stationsRaw = await getJSON(`${RAIL_BASE}/${encodeURIComponent(file)}`);
-    const stations = normalizeStations(stationsRaw);
-    stations.forEach((s) => appendOption(els.station, s.name, s.name));
-  };
-}
+      <!-- 面積は「単位 → 土地面積 → 建物面積」の順 -->
+      <label>面積の単位
+        <select id="areaUnit">
+          <option value="sqm" selected>㎡（平方メートル）</option>
+          <option value="tsubo">坪</option>
+        </select>
+      </label>
 
-// ---------- boot ----------
-async function bootstrap() {
-  try {
-    initWalkSelect();
-    initUserTypeToggle();
-    initYears();
-    initFloors();
-    await Promise.all([loadCities(), loadLines()]);
-  } catch (e) {
-    console.error(e);
-    if (els.errorBox) {
-      els.errorBox.style.display = "block";
-      els.errorBox.textContent = "初期データの取得に失敗しました。再読み込みしてください。";
-    } else {
-      alert("初期データの取得に失敗しました。");
-    }
-  }
-}
-document.addEventListener("DOMContentLoaded", bootstrap);
+      <label>土地面積 <span class="required">（必須）</span>
+        <input id="landArea" type="number" inputmode="decimal" step="0.01" min="0" placeholder="例）120.5" />
+      </label>
 
-// 送信（ダミー）
-els?.submitBtn?.addEventListener("click", (e) => {
-  e.preventDefault();
-  alert("送信処理は後で実装します（UI動作確認用）");
-});
+      <label>建物（専有）面積 <span class="required">（必須）</span>
+        <input id="buildingArea" type="number" inputmode="decimal" step="0.01" min="0" placeholder="例）85.3" />
+      </label>
+
+      <label>築年 <span class="required">（必須）</span>
+        <select id="buildYear"><!-- app.jsで1900〜2025を投入 --></select>
+      </label>
+
+      <label>間取
+        <select id="floorPlan">
+          <option value="">選択してください</option>
+          <option>1R</option><option>1K</option><option>1DK</option><option>1LDK</option>
+          <option>2K</option><option>2DK</option><option>2LDK</option>
+          <option>3DK</option><option>3LDK</option><option>4DK</option><option>4LDK</option>
+          <option>5LDK以上</option>
+        </select>
+      </label>
+
+      <label>構造
+        <select id="structure">
+          <option value="">選択してください</option>
+          <option>木造</option><option>ブロック</option><option>鉄骨</option>
+          <option>RC</option><option>SRC</option><option>軽量鉄骨</option>
+        </select>
+      </label>
+
+      <label>建物階数
+        <select id="totalFloors"><option value="">選択してください</option></select>
+      </label>
+
+      <label>所在階
+        <select id="floor"><option value="">選択してください</option></select>
+      </label>
+
+      <label>採光面（最大開口面）
+        <select id="aspect">
+          <option value="">選択してください</option>
+          <option>北</option><option>北東</option><option>東</option><option>南東</option>
+          <option>南</option><option>南西</option><option>西</option><option>北西</option>
+        </select>
+      </label>
+
+      <label class="inline"><input id="isCorner" type="checkbox" /> <span>角地</span></label>
+    </section>
+
+    <!-- 査定結果を送る -->
+    <section class="card">
+      <h2>査定結果を送る</h2>
+      <label class="span-8">メールアドレス
+        <input id="email" type="email" placeholder="例）you@example.com" />
+      </label>
+
+      <div class="actions span-12">
+        <button id="submitBtn" type="button" class="btn-icon" aria-label="査定を送信">
+          <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M2 21l21-9L2 3v7l15 2-15 2v7z"/></svg>
+          査定を送信
+        </button>
+      </div>
+
+      <p class="small span-12">
+        ※該当物件付近の成約情報がある場合は、完全版レポートはメールでお送りします。<br />
+        ※中央値＋上下幅、徒歩逓減グラフ、根拠サマリーを送付します。営業電話は致しません。
+      </p>
+    </section>
+
+    <!-- コメント・個人情報保護方針 -->
+    <section class="card">
+      <h2>コメント</h2>
+      <textarea id="message" rows="6" placeholder="ご要望・補足事項など自由にご記入ください"></textarea>
+
+      <h2 class="span-12">個人情報保護方針</h2>
+      <p class="small span-12">
+        ご提供いただいた個人情報は、不動産の売買・賃貸、それらの代理・仲介・管理その他付帯する事業のため、弊社において利用させて頂きます。
+      </p>
+    </section>
+
+    <section class="error-summary" id="errorBox" style="display:none"></section>
+  </main>
+
+  <footer><p class="small">© 不動産AI査定</p></footer>
+  <script src="./app.js" defer></script>
+</body>
+</html>
