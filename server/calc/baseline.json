@@ -1,0 +1,62 @@
+{
+  "city_unit_ppsqm": {
+    "default": 700000
+  },
+  "station_unit_ppsqm": {},
+
+  "coefficients": {
+    "walk": [
+      { "max_min": 3,   "k": 1.00 },
+      { "max_min": 5,   "k": 0.98 },
+      { "max_min": 10,  "k": 0.95 },
+      { "max_min": 15,  "k": 0.92 },
+      { "max_min": 20,  "k": 0.88 },
+      { "max_min": 30,  "k": 0.80 },
+      { "max_min": 45,  "k": 0.72 },
+      { "max_min": 999, "k": 0.65 }
+    ],
+    "built_year": [
+      { "lte": 1980, "k": 0.86 },
+      { "lte": 1999, "k": 0.92 },
+      { "lte": 2009, "k": 0.98 },
+      { "gt": 2009,  "k": 1.02 },
+      { "land": 1.00 }
+    ],
+    "structure": {
+      "木造": 0.96,
+      "鉄骨造": 0.98,
+      "鉄筋コンクリート造": 1.00,
+      "鉄骨鉄筋コンクリート造": 1.02,
+      "default": 1.00
+    },
+    "floor": [
+      { "gte": 15, "k": 1.04 },
+      { "gte": 10, "k": 1.03 },
+      { "gte": 5,  "k": 1.01 },
+      { "eq": 1,   "k": 0.99 },
+      { "default": 1.00 }
+    ],
+    "orientation": {
+      "base": {
+        "S": 1.03, "SE": 1.04, "SW": 1.02,
+        "E": 1.02, "W": 1.00,
+        "NE": 1.01, "NW": 1.00, "N": 0.95,
+        "default": 1.00
+      },
+      "corner_bonus": {
+        "S": 0.03, "SE": 0.05, "SW": 0.03,
+        "E": 0.02, "W": 0.00,
+        "NE": 0.01, "NW": 0.00, "N": -0.01,
+        "default": 0.02
+      }
+    }
+  },
+
+  "range_rules": {
+    "missing_0": 0.06,
+    "missing_1": 0.08,
+    "missing_2": 0.10,
+    "missing_3_plus": 0.12,
+    "count_keys": ["station", "minutes", "builtYear"]
+  }
+}
