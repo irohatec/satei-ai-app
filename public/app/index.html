@@ -16,17 +16,23 @@
     <section class="card">
       <h2>ご利用の方</h2>
 
-      <div class="inline span-12">
-        <label class="inline">
-          <input type="radio" name="userType" value="personal" checked />
-          <span>個人</span>
-        </label>
+      <!-- ★ ラジオと注意書きを分離（PC:横並び / SP:縦） -->
+      <div class="user-type-row span-12">
+        <div class="user-type-options">
+          <label class="inline">
+            <input type="radio" name="userType" value="personal" checked />
+            <span>個人</span>
+          </label>
 
-        <label class="inline">
-          <input type="radio" name="userType" value="business" />
-          <span>個人事業主または法人</span>
-          <span class="inline-note small">（※商用利用の場合は、お名前と連絡先を記載してください。）</span>
-        </label>
+          <label class="inline">
+            <input type="radio" name="userType" value="business" />
+            <span>個人事業主または法人</span>
+          </label>
+        </div>
+
+        <div class="user-type-note small">
+          ※商用利用の場合は、お名前と連絡先を記載してください。
+        </div>
       </div>
 
       <!-- 事業者向け（幅広） -->
@@ -153,7 +159,7 @@
         </select>
       </label>
 
-      <!-- 角地：チェックボックス+ラベル一体化 -->
+      <!-- 角地：チェックボックス+ラベル一体 -->
       <label class="checkbox">
         <input id="isCorner" type="checkbox" />
         <span>角地</span>
@@ -174,12 +180,10 @@
         <input id="email" type="email" placeholder="例）you@example.com" />
       </label>
 
-      <!-- 全幅・1行の大きいボタン -->
       <div class="span-12">
         <button id="submitBtn" type="button" class="btn-primary" aria-label="査定を送信">査定を送信</button>
       </div>
 
-      <!-- 注意書き（ボタン直下／1行ずつ） -->
       <div class="notices span-12">
         <p class="notice nowrap">※該当物件付近の最安値及び最高値がある場合は、メールでお送りします。</p>
         <p class="notice nowrap">※本アプリは、国土交通省のデータおよび都道府県地価調査データを基にAIが査定しています。</p>
