@@ -21,11 +21,12 @@
           <input type="radio" name="userType" value="personal" checked />
           <span>個人</span>
         </label>
+
         <label class="inline">
           <input type="radio" name="userType" value="business" />
           <span>個人事業主または法人</span>
+          <span class="inline-note small">（※商用利用の場合は、お名前と連絡先を記載してください。）</span>
         </label>
-        <small class="small note-right">※商用利用の場合は、お名前と連絡先を記載してください。</small>
       </div>
 
       <!-- 事業者向け（幅広） -->
@@ -51,21 +52,15 @@
       </label>
 
       <label>市区町村
-        <select id="citySelect">
-          <option value="">市区町村を選択</option>
-        </select>
+        <select id="citySelect"><option value="">市区町村を選択</option></select>
       </label>
 
       <label>町名
-        <select id="townSelect">
-          <option value="">町名を選択</option>
-        </select>
+        <select id="townSelect"><option value="">町名を選択</option></select>
       </label>
 
       <label>丁目
-        <select id="chomeSelect">
-          <option value="">丁目を選択</option>
-        </select>
+        <select id="chomeSelect"><option value="">丁目を選択</option></select>
       </label>
 
       <label class="span-8">番地・マンション名
@@ -78,21 +73,15 @@
       <h2>最寄り駅</h2>
 
       <label>路線
-        <select id="lineSelect">
-          <option value="">路線を選択</option>
-        </select>
+        <select id="lineSelect"><option value="">路線を選択</option></select>
       </label>
 
       <label>駅
-        <select id="stationSelect">
-          <option value="">駅を選択</option>
-        </select>
+        <select id="stationSelect"><option value="">駅を選択</option></select>
       </label>
 
       <label>徒歩分 <small class="small">（1分=80メートルの目安）</small>
-        <select id="walkSelect">
-          <option value="">選択してください</option>
-        </select>
+        <select id="walkSelect"><option value="">選択してください</option></select>
       </label>
     </section>
 
@@ -111,7 +100,6 @@
         </select>
       </label>
 
-      <!-- 面積は「単位 → 土地面積 → 建物面積」の順 -->
       <label>面積の単位
         <select id="areaUnit">
           <option value="sqm" selected>㎡（平方メートル）</option>
@@ -128,7 +116,7 @@
       </label>
 
       <label>築年 <span class="required">（必須）</span>
-        <select id="buildYear"><!-- app.js で 1900〜2025 を投入 --></select>
+        <select id="buildYear"><!-- app.js で1900〜2025を投入 --></select>
       </label>
 
       <label>間取
@@ -150,11 +138,11 @@
       </label>
 
       <label>建物階数
-        <select id="totalFloors"><!-- app.js で 1〜100 を投入 --></select>
+        <select id="totalFloors"><!-- app.js で1〜100 --></select>
       </label>
 
       <label>所在階
-        <select id="floor"><!-- app.js で 1〜100 を投入 --></select>
+        <select id="floor"><!-- app.js で1〜100 --></select>
       </label>
 
       <label>採光面（最大開口面）
@@ -165,10 +153,11 @@
         </select>
       </label>
 
-      <div class="field-inline">
+      <!-- 角地：チェックボックス+ラベル一体化 -->
+      <label class="checkbox">
         <input id="isCorner" type="checkbox" />
-        <label for="isCorner">角地</label>
-      </div>
+        <span>角地</span>
+      </label>
     </section>
 
     <!-- 査定結果 -->
@@ -185,14 +174,12 @@
         <input id="email" type="email" placeholder="例）you@example.com" />
       </label>
 
-      <!-- スタイリッシュな一行ボタン（全幅） -->
+      <!-- 全幅・1行の大きいボタン -->
       <div class="span-12">
-        <button id="submitBtn" type="button" class="btn-primary" aria-label="査定を送信">
-          査定を送信
-        </button>
+        <button id="submitBtn" type="button" class="btn-primary" aria-label="査定を送信">査定を送信</button>
       </div>
 
-      <!-- 注意書き：ボタン直下／1行ずつ折り返しなし -->
+      <!-- 注意書き（ボタン直下／1行ずつ） -->
       <div class="notices span-12">
         <p class="notice nowrap">※該当物件付近の最安値及び最高値がある場合は、メールでお送りします。</p>
         <p class="notice nowrap">※本アプリは、国土交通省のデータおよび都道府県地価調査データを基にAIが査定しています。</p>
