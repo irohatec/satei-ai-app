@@ -4,7 +4,12 @@
   <meta charset="utf-8">
   <title>面積入力デモ</title>
   <meta name="viewport" content="width=device-width, initial-scale=1">
-  <style> body{font-family:ui-sans-serif,system-ui; padding:24px; background:#f9fafb;} .card{background:#fff;border:1px solid #e5e7eb;border-radius:12px;padding:20px;max-width:720px} pre{background:#0b1020;color:#e5e7eb;padding:12px;border-radius:8px;overflow:auto}</style>
+  <style>
+    body{font-family:ui-sans-serif,system-ui; padding:24px; background:#f9fafb;}
+    .card{background:#fff;border:1px solid #e5e7eb;border-radius:12px;padding:20px;max-width:720px}
+    pre{background:#0b1020;color:#e5e7eb;padding:12px;border-radius:8px;overflow:auto}
+    h1{margin-bottom:16px;}
+  </style>
 </head>
 <body>
   <h1>面積入力デモ</h1>
@@ -14,8 +19,8 @@
     <pre id="out">{}</pre>
   </div>
 
-  <!-- 面積コンポーネント -->
-  <script src="/app/js/area-input.js"></script>
+  <!-- 面積コンポーネント（相対パスで読み込み） -->
+  <script src="./js/area-input.js"></script>
   <script>
     const area = document.getElementById("area");
     const out = document.getElementById("out");
