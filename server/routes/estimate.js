@@ -1,21 +1,19 @@
-// server/routes/estimate.js  — 最小テスト版（常に200を返す）
+// server/routes/estimate.js  ← Routerをそのままexport（最小テスト版）
 import { Router } from "express";
 
 const router = Router();
 
-// 何も計算せず固定のダミー値を返す
+// 常に200を返すダミー。まずは500エラーを消すための動作確認用です
 router.post("/estimate", (req, res) => {
   return res.json({
     ok: true,
-    priceMinMan: 1863,  // 最安値（ダミー）
-    priceMan: 2380,     // 中央値（ダミー）
-    priceMaxMan: 2520,  // 最高値（ダミー）
-    note: "minimal test route"
+    priceMinMan: 1863,
+    priceMan: 2380,
+    priceMaxMan: 2520,
+    note: "router default export test"
   });
 });
 
-// サーバに登録
-export default function mount(app) {
-  app.use(router);
-}
+// ★ここがポイント：Routerを“そのまま”デフォルトで渡す
+export default router;
 export { router };
