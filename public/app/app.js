@@ -76,14 +76,16 @@ function normalizeTownsFile(data){
 }
 async function loadCities(){
   const idx = await getJSON(`./datasets/address/${PREF}/index.json`);
-  const cityItems = normalizeCityIndex(idx);
+  // ★ 市区町村をフリガナ順（五十音順）にソート
+  const cityItems = normalizeCityIndex(idx).sort((a,b)=> (a.label||"").localeCompare(b.label||"", "ja"));
   fillOptions(els.city, cityItems, {valueKey:"value", labelKey:"label", placeholder:"市区町村を選択"});
   els.city.onchange = async ()=>{
     const code = els.city.value;
     fillOptions(els.town, [], {placeholder:"町名を選択"}); fillOptions(els.chome, [], {placeholder:"丁目を選択"});
     if(!code) return;
     const townsRaw = await getJSON(`./datasets/address/${PREF}/${encodeURIComponent(code)}.json`);
-    const list = normalizeTownsFile(townsRaw);
+    // ★ 町名もフリガナ順（五十音順）にソート
+    const list = normalizeTownsFile(townsRaw).sort((a,b)=>(a.name||"").localeCompare(b.name||"","ja"));
     els._townList = list;
     fillOptions(els.town, list.map(t=>t.name), {placeholder:"町名を選択"});
     debouncedCompute();
