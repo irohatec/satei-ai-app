@@ -1,9 +1,8 @@
-<script>
 // public/app/js/area-input.js
 // 面積入力 Web Component（㎡/坪 切替、範囲チェック、小数OK、ヘルプ表示）
 // 使い方: <area-input id="area" label="専有面積" required></area-input>
 // 値の取得: document.getElementById('area').valueSqm  // 常に㎡で取得
-// 変更イベント: element.addEventListener('area-change', e => console.log(e.detail))  // { sqm, unit, raw }
+// 変更イベント: element.addEventListener('area-change', e => console.log(e.detail))  // { sqm, unit, raw, valid }
 
 class AreaInput extends HTMLElement {
   static TUBO_TO_SQM = 3.305785;      // 1坪=3.305785㎡
@@ -126,7 +125,7 @@ class AreaInput extends HTMLElement {
     const showErr = isFinite(sqm) && (sqm < AreaInput.MIN_SQM || sqm > AreaInput.MAX_SQM);
     this.$.error.classList.toggle("show", showErr);
 
-    // 変更イベント（初期描画でも発火させたい場合は initial=true で通す）
+    // 変更イベント
     const detail = {
       sqm: isFinite(sqm) ? Number(sqm.toFixed(2)) : null,
       unit: this.$.unit.value,
@@ -140,4 +139,3 @@ class AreaInput extends HTMLElement {
 }
 
 customElements.define("area-input", AreaInput);
-</script>
