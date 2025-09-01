@@ -1,11 +1,9 @@
-// server.js  （全文）
-// 静的 /app 配信・/health・/estimate ルート登録・404・JSONロガー（最小）
+// server.js（全文：cors依存なし版）
+// 静的 /app 配信・/health・/estimate ルート登録・404・簡易CORS
 import express from "express";
 import path from "path";
 import { fileURLToPath } from "url";
-import cors from "cors";
-
-import estimateRouter from "./server/routes/estimate.js"; // ← 重要：Routerそのものをimport
+import estimateRouter from "./server/routes/estimate.js"; // ← Router（/ にpost定義）
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -13,7 +11,7 @@ const __dirname = path.dirname(__filename);
 const app = express();
 
 // ===== 環境設定 =====
-const PORT = process.env.PORT || 3000;               // Renderでは自動で割当（例:10000）
+const PORT = process.env.PORT || 3000;
 const NODE_ENV = process.env.NODE_ENV || "production";
 const PUBLIC_APP_BASE = process.env.PUBLIC_APP_BASE || "/app";
 const ENABLE_CORS = String(process.env.ENABLE_CORS || "false") === "true";
@@ -23,8 +21,15 @@ const CORS_ORIGIN = process.env.CORS_ORIGIN || "*";
 app.use(express.json({ limit: "1mb" }));
 app.use(express.urlencoded({ extended: true }));
 
+// 外部パッケージを使わない最小CORS
 if (ENABLE_CORS) {
-  app.use(cors({ origin: CORS_ORIGIN, credentials: false }));
+  app.use((req, res, next) => {
+    res.setHeader("Access-Control-Allow-Origin", CORS_ORIGIN);
+    res.setHeader("Access-Control-Allow-Methods", "GET,POST,OPTIONS");
+    res.setHeader("Access-Control-Allow-Headers", "Content-Type");
+    if (req.method === "OPTIONS") return res.status(204).end();
+    next();
+  });
 }
 
 // 簡易ロガー
@@ -42,7 +47,6 @@ app.use((req, res, next) => {
 const appDir = path.join(__dirname, "public", "app");
 app.use(PUBLIC_APP_BASE, express.static(appDir, {
   extensions: ["html"],
-  // 開発中はキャッシュ抑制
   maxAge: NODE_ENV === "production" ? "1h" : 0,
 }));
 
@@ -54,24 +58,15 @@ app.get("/favicon.ico", (_req, res) => res.status(204).end());
 
 // ===== ヘルスチェック =====
 app.get("/health", (_req, res) => {
-  res.json({
-    ok: true,
-    env: NODE_ENV,
-    timestamp: new Date().toISOString(),
-  });
+  res.json({ ok: true, env: NODE_ENV, timestamp: new Date().toISOString() });
 });
 
 // ===== API ルート登録 =====
-// ★ここが今回の主目的：/estimate を確実に登録
-app.use(estimateRouter);
+// ベースパス `/estimate` に対して、ルーター側は `router.post("/")` で定義済み
+app.use("/estimate", estimateRouter);
 
 // ===== 404（最後尾） =====
-app.use((req, res, next) => {
-  // /app 配下の静的は express.static が処理済み。残りはAPIの404。
-  if (req.method === "GET" && req.accepts("html")) {
-    // 未知のパスはフロントに戻したい場合は以下を有効化：
-    // return res.sendFile(path.join(appDir, "index.html"));
-  }
+app.use((req, res) => {
   return res.status(404).json({ ok: false, error: "NOT_FOUND", path: req.originalUrl });
 });
 
