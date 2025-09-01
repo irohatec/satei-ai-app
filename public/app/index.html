@@ -1,187 +1,319 @@
-<!-- public/app/index.html -->
 <!DOCTYPE html>
 <html lang="ja">
-  <head>
-    <meta charset="utf-8" />
-    <meta name="viewport" content="width=device-width, initial-scale=1" />
-    <title>不動産AI査定</title>
-    <link rel="stylesheet" href="./style.css" />
-  </head>
-  <body>
-    <main class="container">
-      <h1>不動産AI査定</h1>
-
-      <!-- ご利用の方 -->
-      <section class="card">
-        <h2>ご利用の方</h2>
-        <div class="row">
-          <label class="radio"><input type="radio" name="userType" value="personal" checked /> 個人</label>
-          <label class="radio"><input type="radio" name="userType" value="business" /> 個人事業主または法人</label>
-          <div class="hint">※商用利用の場合は、お名前と連絡先を記載してください。</div>
-        </div>
-        <div id="businessFields" class="grid2" style="display:none">
-          <div>
-            <label>会社名</label>
-            <input id="company" type="text" placeholder="例）株式会社○○" />
-          </div>
-          <div>
-            <label>連絡先（電話）</label>
-            <input id="phone" type="text" placeholder="例）080-1234-5678" />
-          </div>
-        </div>
-      </section>
+<head>
+  <meta charset="utf-8" />
+  <title>不動産AI査定</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <!-- 外部スタイル -->
+  <link rel="stylesheet" href="/app/style.css" />
+</head>
+<body>
+  <div class="container">
+    <div class="card">
+      <h1>不動産AI査定 <span class="pill">広島県データで推定</span></h1>
 
       <!-- エリア -->
-      <section class="card">
-        <h2>エリア</h2>
-        <div class="grid3">
+      <div class="section">
+        <h3>エリア</h3>
+        <div class="grid2">
           <div>
-            <label>都道府県</label>
-            <input type="text" value="広島県" disabled />
-            <small class="sub">※今回は広島県に限定しています</small>
+            <label>市区町村（必須）</label>
+            <select id="citySelect"><option value="">読み込み中...</option></select>
+            <div class="help">広島県の市区町村を <code>index.json</code> から自動読込します。</div>
           </div>
           <div>
-            <label>市区町村</label>
-            <select id="citySelect"></select>
-          </div>
-          <div>
-            <label>町名</label>
-            <select id="townSelect"></select>
-          </div>
-          <div>
-            <label>丁目</label>
-            <select id="chomeSelect"></select>
-          </div>
-          <div class="span2">
-            <label>番地・マンション名</label>
-            <input id="addressDetail" type="text" placeholder="例）1-2-3 マンション名　601号" />
+            <label>丁目（必須）</label>
+            <input id="chomeInput" type="text" placeholder="例）大手町3丁目">
+            <div class="help">番地・マンション名は任意</div>
           </div>
         </div>
-      </section>
+      </div>
 
-      <!-- 最寄り駅 -->
-      <section class="card">
-        <h2>最寄り駅</h2>
+      <!-- 物件情報 -->
+      <div class="section">
+        <h3>物件情報</h3>
+        <div class="grid2">
+          <div>
+            <label>種目（必須）</label>
+            <select id="propertyTypeSelect">
+              <option value="">選択してください</option>
+              <option value="mansion">中古マンション</option>
+              <option value="house">土地＋建物</option>
+              <option value="land">土地</option>
+            </select>
+          </div>
+          <div>
+            <label>メール（必須：リード獲得用）</label>
+            <input id="emailInput" type="email" placeholder="you@example.com">
+          </div>
+        </div>
+
+        <div class="grid2 mt-12">
+          <div>
+            <label>面積（必須）</label>
+            <area-input id="area" required help-word="専有面積"></area-input>
+            <div class="help">坪↔㎡の切替・自動換算、範囲チェック込み</div>
+          </div>
+          <div>
+            <label>築年（必須）</label>
+            <builtyear-input id="builtYear" required></builtyear-input>
+          </div>
+        </div>
+      </div>
+
+      <!-- 沿線・駅（任意／マンションは強く促す） -->
+      <div class="section">
+        <h3>沿線・駅・徒歩（任意）</h3>
         <div class="grid3">
           <div>
-            <label>路線</label>
-            <select id="lineSelect"></select>
+            <label>沿線</label>
+            <input id="lineSelect" type="text" placeholder="例）広電本線 / JR山陽本線">
           </div>
           <div>
             <label>駅</label>
-            <select id="stationSelect"></select>
+            <input id="stationSelect" type="text" placeholder="例）本通 / 紙屋町西 / 横川">
           </div>
           <div>
-            <label>徒歩分 <small class="sub">（1分=80メートルの目安）</small></label>
-            <select id="walkSelect"></select>
+            <label>徒歩分</label>
+            <select id="walkMinutesSelect">
+              <option value="">未選択</option>
+              <option>1</option><option>3</option><option>5</option>
+              <option>10</option><option>15</option><option>20</option><option>25</option><option>30</option>
+            </select>
           </div>
         </div>
-      </section>
+        <div class="help">マンションでは駅入力で精度UP。未入力でも送信は可能です。</div>
+      </div>
 
-      <!-- 物件情報 -->
-      <section class="card">
-        <h2>物件情報</h2>
-        <div class="grid3">
-          <div>
-            <label>種目 <span class="req">（必須）</span></label>
-            <select id="propertyType">
-              <option value="">選択してください</option>
-              <option value="マンション">マンション</option>
-              <option value="戸建">戸建</option>
-              <option value="土地">土地</option>
-              <option value="売ビル">売ビル</option>
-              <option value="売アパート">売アパート</option>
-            </select>
-          </div>
-          <div>
-            <label>面積の単位</label>
-            <select id="areaUnit">
-              <option value="sqm">㎡（平方メートル）</option>
-              <option value="tsubo">坪</option>
-            </select>
-          </div>
-          <div>
-            <label>土地面積 <span id="landReq"></span></label>
-            <input id="landArea" type="number" min="0" step="0.01" placeholder="例）120" />
-          </div>
-          <div>
-            <label>建物（専有）面積 <span id="bldgReq"></span></label>
-            <input id="buildingArea" type="number" min="0" step="0.01" placeholder="例）85.3" />
-          </div>
-          <div>
-            <label>築年 <span id="buildYearReq"></span></label>
-            <select id="buildYear"></select>
-          </div>
-          <div>
-            <label>間取</label>
-            <select id="floorPlan">
-              <option value="">選択してください</option>
-              <option>1R</option><option>1K</option><option>1DK</option><option>1LDK</option>
-              <option>2K</option><option>2DK</option><option>2LDK</option>
-              <option>3DK</option><option>3LDK</option>
-              <option>4LDK</option><option>5LDK以上</option>
-            </select>
-          </div>
-          <div>
-            <label>構造（補正）</label>
-            <select id="structure">
-              <option value="">選択してください</option>
-              <option>木造</option><option>ブロック</option><option>鉄骨</option>
-              <option>RC</option><option>SRC</option><option>軽量鉄骨</option>
-            </select>
-          </div>
-          <div>
-            <label>建物階数</label>
-            <select id="totalFloors"></select>
-          </div>
-          <div>
-            <label>所在階（マンション補正）</label>
-            <select id="floor"></select>
-          </div>
-          <div>
-            <label>採光面（補正）</label>
-            <select id="aspect">
-              <option value="">選択してください</option>
-              <option>北</option><option>北東</option><option>東</option><option>南東</option>
-              <option>南</option><option>南西</option><option>西</option><option>北西</option>
-            </select>
-          </div>
-          <div class="checkbox">
-            <label><input type="checkbox" id="isCorner" /> 角地（補正）</label>
-          </div>
-        </div>
-      </section>
+      <div class="divider"></div>
 
-      <!-- 査定結果（即時反映） -->
-      <section id="resultCard" class="card">
-        <h2>査定結果</h2>
-        <div class="result-box">
-          <div class="result-main"><span id="resultMid">—</span><span class="unit">万円</span></div>
-          <div class="result-range">
-            <span class="min">最安値 <b id="resultMin">—</b> 万円</span>
-            <span class="max">最高値 <b id="resultMax">—</b> 万円</span>
-          </div>
+      <!-- 結果 -->
+      <div class="section">
+        <h3>査定結果</h3>
+        <div id="resultBox" class="result">入力すると、この枠に査定額（レンジ）が表示されます。</div>
+        <div class="chips" id="notes">
+          <span class="note" id="stationNote" hidden>駅情報未入力のため幅広推定です。入力で±幅が縮みます。</span>
         </div>
-      </section>
+      </div>
 
-      <!-- メール送信（レンジ＋近隣事例を送付） -->
-      <section class="card">
-        <h2>査定結果を送る</h2>
-        <div class="grid1">
-          <div>
-            <label>メールアドレス</label>
-            <input id="email" type="email" placeholder="例）you@example.com" />
-          </div>
-          <button id="submitBtn" class="primary lg">査定を送信</button>
-        </div>
-        <div class="notes">
-          ※該当物件付近の最安値及び最高値がある場合は、メールでお送りします。<br />
-          ※本アプリは、国土交通省のデータおよび都道府県地価調査データを基にAIが査定しています。<br />
-          ※ご入力いただいた情報は、当社の個人情報保護方針に従い、適正に管理いたします。
-        </div>
-      </section>
-    </main>
+      <!-- 送信 -->
+      <div class="section row-right">
+        <button id="estimateSubmitBtn" type="button" disabled>査定する</button>
+        <div id="toastHost"></div>
+      </div>
+    </div>
+  </div>
 
-    <script src="./app.js"></script>
-  </body>
+  <!-- 必要JS -->
+  <script src="/app/js/area-input.js"></script>
+  <script src="/app/js/builtyear-input.js"></script>
+
+  <script>
+    // ========== ユーティリティ ==========
+    const $ = (s) => document.querySelector(s);
+    const fmtJPY = (n) => Number(n).toLocaleString('ja-JP') + ' 円';
+    const median = (arr) => {
+      const a = arr.filter(v=>isFinite(v)).sort((x,y)=>x-y);
+      const n = a.length;
+      if (!n) return NaN;
+      return n%2 ? a[(n-1)/2] : (a[n/2-1]+a[n/2])/2;
+    };
+    const slug = (s) => (s||'').trim().toLowerCase().replace(/[^\w\u3040-\u30ff\u3400-\u9fff]+/g,'-');
+
+    function showToast(message, type = 'info') {
+      const host = $('#toastHost') || document.body;
+      const t = document.createElement('div');
+      t.textContent = message;
+      Object.assign(t.style, {
+        position: 'fixed', right: '16px', bottom: '16px',
+        background: type==='warn' ? '#fff7ed' : '#111827',
+        color: type==='warn' ? '#9a3412' : '#fff',
+        border: '1px solid ' + (type==='warn' ? '#fed7aa' : '#374151'),
+        borderRadius: '10px', padding: '10px 14px', boxShadow:'0 6px 20px rgba(0,0,0,.12)', zIndex: 2147483647
+      });
+      host.appendChild(t); setTimeout(()=>t.remove(), 3600);
+    }
+
+    // ========== 入力参照 ==========
+    const els = {
+      city:    $('#citySelect'),
+      chome:   $('#chomeInput'),
+      type:    $('#propertyTypeSelect'),
+      email:   $('#emailInput'),
+      area:    $('#area'),
+      built:   $('#builtYear'),
+      line:    $('#lineSelect'),
+      station: $('#stationSelect'),
+      walk:    $('#walkMinutesSelect'),
+      submit:  $('#estimateSubmitBtn'),
+      result:  $('#resultBox'),
+      stationNote: $('#stationNote')
+    };
+
+    // ========== 市区町村のロード ==========
+    async function loadCities() {
+      try {
+        const res = await fetch('/app/datasets/sales/hiroshima/index.json');
+        const idx = await res.json();
+        const files = idx.files || [];
+        els.city.innerHTML = '<option value="">選択してください</option>';
+        for (const f of files) {
+          const name = f.city; // 例：広島市中区
+          const file = f.file; // 例：広島市中区.json
+          const opt = document.createElement('option');
+          opt.value = JSON.stringify({ name, file });
+          opt.textContent = name;
+          els.city.appendChild(opt);
+        }
+      } catch (e) {
+        els.city.innerHTML = '<option value="">（読み込み失敗）</option>';
+        showToast('市区町村の読み込みに失敗しました', 'warn');
+      }
+    }
+
+    // ========== 入力妥当性（必須が揃ったらボタン有効） ==========
+    const isEmail = (s) => !!s && /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(s);
+    function isAllRequiredOK() {
+      const cityOk = !!els.city.value;
+      const chomeOk = !!els.chome.value.trim();
+      const typeOk = !!els.type.value;
+      const emailOk = isEmail(els.email.value);
+      const areaOk = els.area?.valid === true;
+      const builtOk = els.built?.valid === true;
+      return cityOk && chomeOk && typeOk && emailOk && areaOk && builtOk;
+    }
+    function refreshSubmitState() {
+      els.submit.disabled = !isAllRequiredOK();
+    }
+
+    // ========== 簡易査定ロジック（クライアント推定） ==========
+    // データから市区×種目の中央値 単価(万円/㎡) を取り、築年・徒歩で補正
+    async function estimatePrice() {
+      if (!isAllRequiredOK()) { els.result.textContent = '入力すると、この枠に査定額（レンジ）が表示されます。'; return; }
+
+      const cityMeta = JSON.parse(els.city.value);      // {name,file}
+      const type = els.type.value;                      // mansion | house | land
+      const sqm = els.area.valueSqm;                    // ㎡
+      const age = els.built.valueAge ?? 0;
+      const walk = parseInt(els.walk.value || '0', 10);
+
+      // 市区データ取得
+      const res = await fetch(`/app/datasets/sales/hiroshima/${encodeURIComponent(cityMeta.file)}`);
+      const rows = await res.json();
+
+      // 種目フィルタ：_asset_type が "mansion" | "house" | "land"
+      const filtered = rows.filter(r => r._asset_type === type);
+
+      // 単価（万円/㎡）の候補を作る
+      const units = filtered.map(r => {
+        const u1 = Number(r.unit_price_man_sqm); // すでにある場合
+        if (isFinite(u1) && u1 > 0) return u1;
+        const priceMan = Number(r.deal_price_man);
+        const area = Number(r.area_sqm);
+        if (isFinite(priceMan) && isFinite(area) && priceMan > 0 && area > 0) {
+          return priceMan / area; // 万円/㎡
+        }
+        return NaN;
+      }).filter(v => isFinite(v) && v > 0);
+
+      // 単価の基準（中央値）。不足なら安全側のデフォルト
+      let unitManPerSqm = median(units);
+      if (!isFinite(unitManPerSqm)) {
+        unitManPerSqm =
+          type === 'mansion' ? 60 :      // 例：60万円/㎡
+          type === 'house'   ? 35 :
+                               12;       // 土地
+      }
+
+      // 補正：築年（毎年 -0.6% 下限 70%）、徒歩（マンションのみ 5分ごと -3% 下限 70%）
+      let factor = 1 - 0.006 * Math.max(0, age);
+      factor = Math.max(factor, 0.70);
+      if (type === 'mansion' && walk) {
+        const walkFactor = 1 - 0.03 * Math.floor(walk / 5);
+        factor = Math.max(factor * walkFactor, 0.70);
+      }
+
+      // 価格計算（円）
+      const priceYen = unitManPerSqm * sqm * 10000; // （万円/㎡ × ㎡ × 1万円）
+      const adj = priceYen * factor;
+      const low  = Math.round(adj * 0.90);
+      const high = Math.round(adj * 1.10);
+      const mid  = Math.round(adj);
+
+      // UI反映
+      els.result.textContent =
+        `推定価格：${fmtJPY(mid)}\n（レンジ：${fmtJPY(low)} 〜 ${fmtJPY(high)}）\n` +
+        `基準単価：${unitManPerSqm.toFixed(2)} 万円/㎡ ／ 面積：${sqm.toFixed(2)} ㎡ ／ 築：${age} 年 ／ 徒歩：${walk || 0} 分`;
+
+      // 注意（駅未入力×マンション）
+      const stationMissing = (type === 'mansion') && (!els.line.value || !els.station.value || !els.walk.value);
+      els.stationNote.hidden = !stationMissing;
+
+      // 送信用のプレビュー（必要ならここでPOST）
+      const payload = {
+        property: {
+          type,
+          area_sqm: sqm,
+          built_year: els.built.valueYear,
+          built_age: age
+        },
+        location: {
+          prefecture: '広島県',
+          city_name: cityMeta.name,
+          city_code: slug(cityMeta.name),   // 後で正式コードに差替可能
+          chome: els.chome.value.trim(),
+          line_name: els.line.value || null,
+          line_code: slug(els.line.value || ''),
+          station_name: els.station.value || null,
+          station_code: slug(els.station.value || ''),
+          walk_min: els.walk.value ? Number(els.walk.value) : null
+        },
+        contact: { email: els.email.value.trim() },
+        estimate: {
+          price: mid, low, high
+        },
+        flags: { station_missing: stationMissing }
+      };
+      // console.log('[lead payload]', payload);
+
+      return payload;
+    }
+
+    // ========== イベント ==========
+    ['change','input'].forEach(ev => {
+      [els.city, els.chome, els.type, els.email, els.line, els.station, els.walk].forEach(el => {
+        if (el) el.addEventListener(ev, async () => {
+          refreshSubmitState();
+          await estimatePrice();
+        });
+      });
+    });
+    els.area?.addEventListener('area-change', async () => {
+      refreshSubmitState();
+      await estimatePrice();
+    });
+    els.built?.addEventListener('builtyear-change', async () => {
+      refreshSubmitState();
+      await estimatePrice();
+    });
+
+    // 送信ボタン
+    els.submit.addEventListener('click', async () => {
+      if (els.submit.disabled) return;
+      const payload = await estimatePrice();
+      if (!payload) return;
+
+      // ▼ 実際の送信（APIがあれば差し替え）
+      // await fetch('/lead', { method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify(payload) });
+
+      showToast('仮査定を受け付けました。結果はメールでお送りします。');
+    });
+
+    // 初期化
+    (async () => {
+      await loadCities();
+      refreshSubmitState();
+    })();
+  </script>
+</body>
 </html>
