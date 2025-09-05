@@ -1,0 +1,142 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width,initial-scale=1" />
+  <title>用途地域 判定チェック（広島）</title>
+  <style>
+    :root { color-scheme: light dark; }
+    body { font-family: system-ui, -apple-system, "Segoe UI", Roboto, "Hiragino Sans", "Noto Sans JP", sans-serif; margin: 24px; }
+    .card { border: 1px solid #ccc; border-radius: 12px; padding: 16px; max-width: 880px; }
+    .row { display: flex; gap: 12px; flex-wrap: wrap; align-items: end; }
+    label { display:block; font-size: 12px; margin-bottom: 4px; }
+    input { padding: 8px; border-radius: 8px; border: 1px solid #bbb; min-width: 220px; }
+    button { padding: 10px 16px; border: 0; border-radius: 10px; cursor: pointer; }
+    button.primary { background: #2563eb; color: white; }
+    .muted { color: #666; font-size: 12px; }
+    .mono { font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; }
+    .result { margin-top: 12px; padding: 12px; border-radius: 8px; background: rgba(37,99,235,.08); }
+    .warn { color: #b45309; }
+    .ok { color: #059669; }
+    details { margin-top: 12px; }
+    .spinner { display:inline-block; width:1em; height:1em; border:2px solid #999; border-top-color:transparent; border-radius:50%; animation:spin 0.9s linear infinite; vertical-align:middle; }
+    @keyframes spin { to { transform: rotate(360deg); } }
+  </style>
+  <!-- Turf.js（PIP判定に使用） -->
+  <script src="https://cdn.jsdelivr.net/npm/@turf/turf@6/turf.min.js"></script>
+</head>
+<body>
+  <h1>用途地域 判定チェック（広島）</h1>
+  <p class="muted">1点を入力して、<strong>用途地域（A29_005）</strong> と <strong>建蔽率/容積率（bcr/far）</strong> を確認します。<br>
+    データ：<span class="mono">/app/datasets/zoning/hiroshima/A29_2019_34.geojson</span>（約18MB）
+  </p>
+
+  <div class="card">
+    <div class="row">
+      <div>
+        <label>経度（lon）※東経は正</label>
+        <input id="lon" type="number" step="0.000001" placeholder="132.452300 例：広島市中心付近" />
+      </div>
+      <div>
+        <label>緯度（lat）※北緯は正</label>
+        <input id="lat" type="number" step="0.000001" placeholder="34.392900" />
+      </div>
+      <div>
+        <button id="btn" class="primary">この地点で判定</button>
+      </div>
+    </div>
+    <p class="muted">例：平和記念公園あたり → 経度 <span class="mono">132.4523</span> / 緯度 <span class="mono">34.3929</span></p>
+    <div id="status" class="muted"></div>
+    <div id="out" class="result" style="display:none;"></div>
+
+    <details>
+      <summary>技術メモ / 免責</summary>
+      <ul>
+        <li>簡易PIP判定：まず各ポリゴンの<b>バウンディングボックス</b>で絞り込み、該当候補に対し <span class="mono">turf.booleanPointInPolygon</span> を実行します。</li>
+        <li>本GeoJSONは簡易変換（穴ポリゴン未対応）です。境界付近や公園等の特殊区域で誤判定の可能性があります。</li>
+        <li>建蔽率/容積率（bcr/far）の <span class="mono">9999</span>（不明）は <span class="mono">null</span> として扱っています。</li>
+        <li>座標は経度（lon）/緯度（lat）の順で入力してください（GeoJSON標準）。</li>
+      </ul>
+    </details>
+  </div>
+
+  <script>
+    const DATA_URL = "/app/datasets/zoning/hiroshima/A29_2019_34.geojson";
+    const $ = (s)=>document.querySelector(s);
+    const statusEl = $("#status");
+    const outEl = $("#out");
+    let features = [];      // { f: Feature, bbox: [minX,minY,maxX,maxY] }
+    let ready = false;
+
+    // 1) 読み込み
+    (async function init(){
+      statusEl.innerHTML = '<span class="spinner"></span> 用途地域データを読み込み中…（初回は数秒〜十数秒）';
+      try{
+        const res = await fetch(DATA_URL, { cache: "force-cache" });
+        if(!res.ok) throw new Error("HTTP " + res.status);
+        const gj = await res.json();
+        if(!gj || !Array.isArray(gj.features)) throw new Error("GeoJSON形式エラー");
+        // bbox 前計算（高速化）
+        features = gj.features.map(f => ({
+          f,
+          bbox: turf.bbox(f) // [minX, minY, maxX, maxY]
+        }));
+        ready = true;
+        statusEl.innerHTML = 'データ読込完了：' + features.length + ' features（判定可能）';
+      }catch(err){
+        statusEl.innerHTML = '読み込み失敗：' + String(err);
+      }
+    })();
+
+    // 2) 判定
+    $("#btn").addEventListener("click", () => {
+      if(!ready){
+        statusEl.innerHTML = 'まだ読み込み中です…';
+        return;
+      }
+      const lon = parseFloat($("#lon").value);
+      const lat = parseFloat($("#lat").value);
+      if(Number.isNaN(lon) || Number.isNaN(lat)){
+        statusEl.innerHTML = '経度・緯度を数値で入力してください。';
+        return;
+      }
+      const pt = turf.point([lon, lat]);
+
+      // bboxで粗選別 → PIP本判定（複数当たりのとき最大面積のものを優先）
+      const candidates = [];
+      for(const it of features){
+        const [minX, minY, maxX, maxY] = it.bbox;
+        if(lon < minX || lon > maxX || lat < minY || lat > maxY) continue;
+        if(turf.booleanPointInPolygon(pt, it.f)){
+          const area = turf.area(it.f);
+          candidates.push({f: it.f, area});
+        }
+      }
+      if(candidates.length === 0){
+        outEl.style.display = "block";
+        outEl.innerHTML = '<div class="warn">該当する用途地域が見つかりませんでした。境界付近や穴ポリゴン未対応の影響の可能性があります。</div>';
+        return;
+      }
+      // 最大面積のfeatureを選択
+      candidates.sort((a,b)=>b.area - a.area);
+      const picked = candidates[0].f;
+      const p = picked.properties || {};
+      const name = p.A29_005 ?? "(名称なし)";
+      const bcr  = (p.bcr ?? p.A29_006 ?? null);
+      const far  = (p.far ?? p.A29_007 ?? null);
+
+      outEl.style.display = "block";
+      outEl.innerHTML = `
+        <div><b>用途地域：</b>${escapeHtml(name)}</div>
+        <div><b>建蔽率（bcr）：</b>${bcr != null ? bcr + '%' : '不明'}</div>
+        <div><b>容積率（far）：</b>${far != null ? far + '%' : '不明'}</div>
+        <div class="muted">（市区町村：${escapeHtml(p.A29_003 ?? '')} / コード：${escapeHtml(p.A29_004 ?? '')}）</div>
+      `;
+    });
+
+    function escapeHtml(s){
+      return String(s).replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+    }
+  </script>
+</body>
+</html>
