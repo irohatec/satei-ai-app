@@ -1,0 +1,173 @@
+<!--
+  File: public/app/tools/rail-nearest.html
+  機能: N02駅ポイント（/app/datasets/rail/n02/hiroshima/N02_2024_stations.geojson）を読み込み、
+        入力座標から最寄駅をテーブル表示（地図なし・検証用）
+  注意: fetch を使うため、file:// 直開きは不可。後でHTTP配信（プレビュー or 本番）で検証してください。
+-->
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width,initial-scale=1" />
+  <title>最寄駅 検索（広島・検証用）</title>
+  <style>
+    :root { color-scheme: light dark; }
+    body { font-family: system-ui, -apple-system, "Segoe UI", Roboto, "Hiragino Sans", "Noto Sans JP", sans-serif; margin: 24px; }
+    h1 { margin: 0 0 8px; }
+    .muted { color: #666; font-size: 12px; }
+    .card { border: 1px solid #ccc; border-radius: 12px; padding: 16px; max-width: 980px; }
+    .row { display: flex; flex-wrap: wrap; gap: 12px; align-items: end; }
+    label { display:block; font-size: 12px; margin-bottom: 4px; }
+    input, select { padding: 8px; border-radius: 8px; border: 1px solid #bbb; min-width: 160px; }
+    input[type="number"] { width: 160px; }
+    button { padding: 10px 16px; border: 0; border-radius: 10px; cursor: pointer; }
+    button.primary { background: #2563eb; color: white; }
+    table { border-collapse: collapse; width: 100%; margin-top: 12px; }
+    th, td { border-bottom: 1px solid #ddd; padding: 8px; text-align: left; }
+    th { background: rgba(37,99,235,.08); }
+    .spinner { display:inline-block; width:1em; height:1em; border:2px solid #999; border-top-color:transparent; border-radius:50%; animation:spin 0.9s linear infinite; vertical-align:middle; }
+    @keyframes spin { to { transform: rotate(360deg); } }
+    .right { text-align: right; }
+    .mono { font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; }
+    details { margin-top: 8px; }
+    .chips { display:flex; gap:.5rem; flex-wrap:wrap; margin-top:6px; }
+    .chip { padding:4px 8px; border-radius: 999px; background: rgba(0,0,0,.07); cursor: pointer; }
+  </style>
+  <script src="/app/js/rail.js"></script>
+</head>
+<body>
+  <h1>最寄駅 検索（広島・検証用）</h1>
+  <p class="muted">
+    データ: <span class="mono">/app/datasets/rail/n02/hiroshima/N02_2024_stations.geojson</span>（N02 2024, 駅515点）<br>
+    使い方: 経度・緯度を入れて「検索」。事業者や路線名で絞り込み可。
+  </p>
+
+  <div class="card">
+    <div class="row">
+      <div>
+        <label>経度（lon）</label>
+        <input id="lon" type="number" step="0.000001" placeholder="132.452300" />
+      </div>
+      <div>
+        <label>緯度（lat）</label>
+        <input id="lat" type="number" step="0.000001" placeholder="34.392900" />
+      </div>
+      <div>
+        <label>取得件数 k</label>
+        <input id="k" type="number" min="1" max="20" value="5" />
+      </div>
+      <div>
+        <label>距離上限（m）</label>
+        <input id="maxm" type="number" min="100" step="100" value="20000" />
+      </div>
+      <div>
+        <label>事業者 含む（例: 広島電鉄）</label>
+        <input id="opLike" type="text" placeholder="広島電鉄 / JR西日本 など" />
+      </div>
+      <div>
+        <label>路線名 含む（例: 本線）</label>
+        <input id="lineLike" type="text" placeholder="本線 / 山陽本線 など" />
+      </div>
+      <div>
+        <button id="btn" class="primary">この条件で検索</button>
+      </div>
+    </div>
+
+    <div class="chips">
+      <span class="chip" data-lon="132.4523" data-lat="34.3929">広島中心（平和記念公園付近）</span>
+      <span class="chip" data-lon="132.4596" data-lat="34.4089">広島駅付近</span>
+      <span class="chip" data-lon="132.4547" data-lat="34.3759">紙屋町付近</span>
+    </div>
+
+    <p id="status" class="muted"></p>
+    <div id="tableWrap"></div>
+
+    <details>
+      <summary>技術メモ / 免責</summary>
+      <ul>
+        <li>駅はN02の駅ポリラインの<b>重心点</b>に変換しています（近傍検索・可視化用途には十分）。</li>
+        <li>距離はハバーサイン（球面距離, m）。</li>
+        <li>検索は1kmグリッドの簡易インデックス＋同心拡張で高速化しています。</li>
+        <li>fetchを使うため、<b>file://直開きは不可</b>（後でHTTP配信で検証してください）。</li>
+      </ul>
+    </details>
+  </div>
+
+  <script>
+    const $ = (s)=>document.querySelector(s);
+    const statusEl = $("#status");
+    const tableWrap = $("#tableWrap");
+
+    // プリセット座標クリック
+    document.querySelectorAll(".chip").forEach(el=>{
+      el.addEventListener("click", ()=>{
+        $("#lon").value = el.getAttribute("data-lon");
+        $("#lat").value = el.getAttribute("data-lat");
+      });
+    });
+
+    // 初回ロード
+    (async () => {
+      statusEl.innerHTML = '<span class="spinner"></span> 駅データを読み込み中…';
+      try {
+        const n = await Rail.load();
+        statusEl.textContent = `駅データ 読み込み完了：${n}件`;
+      } catch (e) {
+        statusEl.textContent = "読み込み失敗: " + e.message;
+      }
+    })();
+
+    // 検索
+    $("#btn").addEventListener("click", ()=>{
+      const lon = parseFloat($("#lon").value);
+      const lat = parseFloat($("#lat").value);
+      const k = Math.max(1, parseInt($("#k").value || "5", 10));
+      const maxm = Math.max(1, parseInt($("#maxm").value || "20000", 10));
+      const opLike = ($("#opLike").value || "").trim();
+      const lineLike = ($("#lineLike").value || "").trim();
+
+      if (!isFinite(lon) || !isFinite(lat)) {
+        statusEl.textContent = "経度・緯度を数値で入力してください。";
+        return;
+      }
+      try {
+        const res = Rail.nearest(lon, lat, { k, maxMeters: maxm, operatorLike: opLike, lineLike });
+        renderTable(res);
+        if (res.length === 0) {
+          statusEl.textContent = "該当なし（距離上限を広げる・フィルタを外すなどお試しください）";
+        } else {
+          statusEl.textContent = `検索結果：${res.length}件（上限 ${k}）`;
+        }
+      } catch (e) {
+        statusEl.textContent = "検索できませんでした: " + e.message;
+      }
+    });
+
+    function renderTable(items){
+      if (!items || items.length === 0) { tableWrap.innerHTML = ""; return; }
+      const rows = items.map(x => {
+        const dist = x.dist_m.toLocaleString();
+        const name = esc(x.name || "");
+        const line = esc(x.line || "");
+        const op   = esc(x.operator || "");
+        const ll = `${x.lon.toFixed(6)}, ${x.lat.toFixed(6)}`;
+        return `<tr>
+          <td>${name}</td>
+          <td>${line}</td>
+          <td>${op}</td>
+          <td class="right">${dist}</td>
+          <td class="mono">${ll}</td>
+        </tr>`;
+      }).join("");
+      tableWrap.innerHTML = `
+        <table>
+          <thead>
+            <tr><th>駅名</th><th>路線名</th><th>事業者</th><th class="right">距離(m)</th><th class="mono">座標 [lon, lat]</th></tr>
+          </thead>
+          <tbody>${rows}</tbody>
+        </table>`;
+    }
+    function esc(s){ return String(s).replace(/[&<>"']/g,c=>({ '&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;' }[c])); }
+  </script>
+</body>
+</html>
