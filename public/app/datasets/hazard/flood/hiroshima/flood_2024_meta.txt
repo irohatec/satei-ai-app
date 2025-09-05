@@ -1,0 +1,15 @@
+出典：国土数値情報「洪水浸水想定区域データ（河川単位）」2024年度（A31a）
+入力：A31a-24_34_10_GML.zip（広島 34 / 河川単位）
+処理：GML（JGD2011 / (B,L)）を解析し、ksj:PlanScale の ksji:bounds → gml:Surface を解決してGeoJSONへ変換
+      ※座標は (緯度, 経度) → GeoJSONの [lon, lat] へ変換済み
+作成日：2025-09-05
+
+出力：
+- flood_2024_river.geojson …… フィーチャ数：70776
+  属性例：riverNumber / riverName / riverManager / creatingType / waterDepth / designatedDate / announcementNumber / designedStorm
+
+注意：
+- 本変換はGML→GeoJSONの直接変換です（座標は変換なし）。
+- ポリゴンの外周・内周（穴）はGMLのRing/Curveを解決して構築していますが、複雑なケースでは崩れる可能性があります。
+- 「waterDepth」は仕様書の区分コードに対応します（詳細はデータ仕様書をご参照ください）。
+- 実務利用時はCC BY 4.0に基づくクレジット表記をお願いします。
