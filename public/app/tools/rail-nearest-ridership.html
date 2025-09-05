@@ -1,0 +1,282 @@
+<!--
+  File: public/app/tools/rail-nearest-ridership.html
+  機能: 「stations_with_ridership.geojson」（N02駅ポイント＋S12_2022乗降人員を結合済）
+        を読み込み、任意座標から最寄駅を検索し、駅名・路線・事業者・距離・
+        2022年の1日あたり乗降人員（ridership_2022）をテーブル表示する検証用ページ。
+  注意: fetchを使うため file:// 直開き不可。後でHTTP配信（プレビュー/本番）で検証してください。
+-->
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width,initial-scale=1" />
+  <title>最寄駅＋乗降人員 検索（広島・検証用）</title>
+  <style>
+    :root { color-scheme: light dark; }
+    body { font-family: system-ui, -apple-system, "Segoe UI", Roboto, "Hiragino Sans", "Noto Sans JP", sans-serif; margin: 24px; }
+    h1 { margin: 0 0 8px; }
+    .muted { color: #666; font-size: 12px; }
+    .card { border: 1px solid #ccc; border-radius: 12px; padding: 16px; max-width: 980px; }
+    .row { display: flex; flex-wrap: wrap; gap: 12px; align-items: end; }
+    label { display:block; font-size: 12px; margin-bottom: 4px; }
+    input { padding: 8px; border-radius: 8px; border: 1px solid #bbb; min-width: 160px; }
+    input[type="number"] { width: 160px; }
+    button { padding: 10px 16px; border: 0; border-radius: 10px; cursor: pointer; }
+    button.primary { background: #2563eb; color: white; }
+    table { border-collapse: collapse; width: 100%; margin-top: 12px; }
+    th, td { border-bottom: 1px solid #ddd; padding: 8px; text-align: left; }
+    th { background: rgba(37,99,235,.08); }
+    .right { text-align: right; }
+    .mono { font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; }
+    .spinner { display:inline-block; width:1em; height:1em; border:2px solid #999; border-top-color:transparent; border-radius:50%; animation:spin 0.9s linear infinite; vertical-align:middle; }
+    @keyframes spin { to { transform: rotate(360deg); } }
+    .chips { display:flex; gap:.5rem; flex-wrap:wrap; margin-top:6px; }
+    .chip { padding:4px 8px; border-radius: 999px; background: rgba(0,0,0,.07); cursor: pointer; }
+  </style>
+</head>
+<body>
+  <h1>最寄駅＋乗降人員 検索（広島・検証用）</h1>
+  <p class="muted">
+    データ: <span class="mono">/app/datasets/rail/s12/hiroshima/stations_with_ridership.geojson</span>（N02駅＋S12_2022結合済）<br>
+    使い方: 経度・緯度を入れて「検索」。必要に応じて事業者/路線で絞り込み。
+  </p>
+
+  <div class="card">
+    <div class="row">
+      <div>
+        <label>経度（lon）</label>
+        <input id="lon" type="number" step="0.000001" placeholder="132.452300" />
+      </div>
+      <div>
+        <label>緯度（lat）</label>
+        <input id="lat" type="number" step="0.000001" placeholder="34.392900" />
+      </div>
+      <div>
+        <label>件数 k</label>
+        <input id="k" type="number" min="1" max="20" value="5" />
+      </div>
+      <div>
+        <label>距離上限（m）</label>
+        <input id="maxm" type="number" min="100" step="100" value="20000" />
+      </div>
+      <div>
+        <label>事業者 含む</label>
+        <input id="opLike" type="text" placeholder="例: 広島電鉄 / JR西日本" />
+      </div>
+      <div>
+        <label>路線名 含む</label>
+        <input id="lineLike" type="text" placeholder="例: 本線 / 山陽本線" />
+      </div>
+      <div>
+        <button id="btn" class="primary">この条件で検索</button>
+      </div>
+    </div>
+
+    <div class="chips">
+      <span class="chip" data-lon="132.4523" data-lat="34.3929">広島中心（平和記念公園付近）</span>
+      <span class="chip" data-lon="132.4596" data-lat="34.4089">広島駅付近</span>
+      <span class="chip" data-lon="132.4547" data-lat="34.3759">紙屋町付近</span>
+    </div>
+
+    <p id="status" class="muted"></p>
+    <div id="tableWrap"></div>
+
+    <details>
+      <summary>技術メモ / 免責</summary>
+      <ul>
+        <li>「stations_with_ridership.geojson」はN02の駅ポイントにS12_2022の乗降人員を結合済み。</li>
+        <li>距離はハバーサイン（球面距離, m）。近傍探索は ~0.01度グリッド（約1km）で簡易インデックス。</li>
+        <li>fetch利用のため <b>file:// 直開き不可</b>。後でHTTP配信でご確認ください。</li>
+      </ul>
+    </details>
+  </div>
+
+  <script>
+    // ---- 設定 ----
+    const DATA_URL = "/app/datasets/rail/s12/hiroshima/stations_with_ridership.geojson";
+    const GRID_DEG = 0.01; // 約1km
+
+    // ---- ユーティリティ ----
+    const $ = (s)=>document.querySelector(s);
+    const statusEl = $("#status");
+    const tableWrap = $("#tableWrap");
+
+    function gridX(lon){ return Math.floor(lon / GRID_DEG); }
+    function gridY(lat){ return Math.floor(lat / GRID_DEG); }
+    function toRad(d){ return d * Math.PI / 180; }
+    function haversineMeters(lat1, lon1, lat2, lon2){
+      const R=6371000;
+      const dLat=toRad(lat2-lat1), dLon=toRad(lon2-lon1);
+      const a = Math.sin(dLat/2)**2 + Math.cos(toRad(lat1))*Math.cos(toRad(lat2))*Math.sin(dLon/2)**2;
+      return 2*R*Math.asin(Math.sqrt(a));
+    }
+    function esc(s){ return String(s).replace(/[&<>"']/g, c=>({ '&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;' }[c])); }
+
+    function normStr(v){
+      if (v == null) return "";
+      return String(v).trim().toLowerCase();
+    }
+    function containsLike(hay, needleLower){
+      return String(hay ?? "").toLowerCase().includes(needleLower);
+    }
+
+    // ---- データ読み込みと索引 ----
+    const Store = {
+      loaded:false,
+      items:[],        // {lon,lat,name,line,operator,ridership,props}
+      grid:new Map(),  // "gy_gx" -> indices
+      async load(){
+        if (this.loaded) return this.items.length;
+        statusEl.innerHTML = '<span class="spinner"></span> データ読み込み中…';
+        const res = await fetch(DATA_URL, { cache:"force-cache" });
+        if (!res.ok) throw new Error("HTTP " + res.status);
+        const gj = await res.json();
+        const feats = Array.isArray(gj.features) ? gj.features : [];
+        this.items = feats
+          .filter(f => f && f.geometry && f.geometry.type === "Point")
+          .map(f => {
+            const [lon, lat] = f.geometry.coordinates;
+            const p = f.properties || {};
+            return {
+              lon:+lon, lat:+lat,
+              name: p.N02_005 ?? p.S12_name ?? "",
+              line: p.N02_003 ?? p.S12_line ?? "",
+              operator: p.N02_004 ?? p.S12_operator ?? "",
+              ridership: p.ridership_2022 ?? null,
+              props: p
+            };
+          });
+
+        // グリッド索引
+        this.grid.clear();
+        this.items.forEach((it, i) => {
+          const key = gridY(it.lat) + "_" + gridX(it.lon);
+          if (!this.grid.has(key)) this.grid.set(key, []);
+          this.grid.get(key).push(i);
+        });
+
+        this.loaded = true;
+        statusEl.textContent = `読み込み完了：${this.items.length}駅`;
+        return this.items.length;
+      },
+      nearest(lon, lat, {k=5, maxMeters=20000, operatorLike="", lineLike=""} = {}){
+        if (!this.loaded) throw new Error("Store.load() を先に実行してください。");
+        const opLike = normStr(operatorLike);
+        const lnLike = normStr(lineLike);
+        const gx0 = gridX(lon), gy0 = gridY(lat);
+        const visited = new Set();
+        let cand = [];
+        for (let r=0; r<=8; r++){
+          for (let dy=-r; dy<=r; dy++){
+            for (let dx=-r; dx<=r; dx++){
+              if (Math.abs(dx)!==r && Math.abs(dy)!==r) continue;
+              const key = (gy0+dy) + "_" + (gx0+dx);
+              if (visited.has(key)) continue;
+              visited.add(key);
+              const idxs = this.grid.get(key); if (!idxs) continue;
+              for (const i of idxs){
+                const it = this.items[i];
+                if (opLike && !containsLike(it.operator, opLike)) continue;
+                if (lnLike && !containsLike(it.line, lnLike)) continue;
+                const d = haversineMeters(lat, lon, it.lat, it.lon);
+                if (d <= maxMeters){
+                  cand.push({ it, dist: d });
+                }
+              }
+            }
+          }
+          if (cand.length >= k*2) break;
+        }
+        cand.sort((a,b)=>a.dist-b.dist);
+        cand = cand.slice(0, k);
+        return cand.map(({it, dist}) => ({
+          name: it.name,
+          line: it.line,
+          operator: it.operator,
+          ridership: it.ridership,
+          lon: it.lon, lat: it.lat,
+          dist_m: Math.round(dist),
+          props: it.props
+        }));
+      }
+    };
+
+    // プリセット座標クリック
+    document.querySelectorAll(".chip").forEach(el=>{
+      el.addEventListener("click", ()=>{
+        $("#lon").value = el.getAttribute("data-lon");
+        $("#lat").value = el.getAttribute("data-lat");
+      });
+    });
+
+    // 初回ロード
+    (async () => {
+      try {
+        await Store.load();
+      } catch (e) {
+        statusEl.textContent = "読み込み失敗: " + e.message;
+      }
+    })();
+
+    // 検索
+    $("#btn").addEventListener("click", ()=>{
+      const lon = parseFloat($("#lon").value);
+      const lat = parseFloat($("#lat").value);
+      const k = Math.max(1, parseInt($("#k").value || "5", 10));
+      const maxm = Math.max(1, parseInt($("#maxm").value || "20000", 10));
+      const opLike = ($("#opLike").value || "").trim();
+      const lineLike = ($("#lineLike").value || "").trim();
+
+      if (!isFinite(lon) || !isFinite(lat)) {
+        statusEl.textContent = "経度・緯度を数値で入力してください。";
+        return;
+      }
+      try {
+        const res = Store.nearest(lon, lat, { k, maxMeters: maxm, operatorLike: opLike, lineLike });
+        renderTable(res);
+        if (res.length === 0) {
+          statusEl.textContent = "該当なし（距離上限を広げる・フィルタを外すなどお試しください）";
+        } else {
+          statusEl.textContent = `検索結果：${res.length}件（上限 ${k}）`;
+        }
+      } catch (e) {
+        statusEl.textContent = "検索できませんでした: " + e.message;
+      }
+    });
+
+    function renderTable(items){
+      if (!items || items.length === 0) { tableWrap.innerHTML = ""; return; }
+      const rows = items.map(x => {
+        const dist = x.dist_m.toLocaleString();
+        const rid = (x.ridership==null || x.ridership===-1) ? "—" : Number(x.ridership).toLocaleString();
+        const name = esc(x.name || "");
+        const line = esc(x.line || "");
+        const op   = esc(x.operator || "");
+        const ll = `${x.lon.toFixed(6)}, ${x.lat.toFixed(6)}`;
+        return `<tr>
+          <td>${name}</td>
+          <td>${line}</td>
+          <td>${op}</td>
+          <td class="right">${dist}</td>
+          <td class="right">${rid}</td>
+          <td class="mono">${ll}</td>
+        </tr>`;
+      }).join("");
+      tableWrap.innerHTML = `
+        <table>
+          <thead>
+            <tr>
+              <th>駅名</th>
+              <th>路線名</th>
+              <th>事業者</th>
+              <th class="right">距離(m)</th>
+              <th class="right">乗降人員(2022/日)</th>
+              <th class="mono">座標 [lon, lat]</th>
+            </tr>
+          </thead>
+          <tbody>${rows}</tbody>
+        </table>`;
+    }
+  </script>
+</body>
+</html>
