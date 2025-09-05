@@ -1,0 +1,207 @@
+<!--
+  File: public/app/tools/valuation-onepoint.html
+  機能: 1点（lon/lat）から査定に必要な情報を統合取得して表示する検証ページ。
+        - 用途地域（A29: zoning.js）
+        - 最寄駅 + 2022年乗降人員（stations_with_ridership.geojson）
+  注意: fetch を使うため file:// 直開き不可。後でHTTP配信でご確認ください。
+-->
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width,initial-scale=1" />
+  <title>統合チェック：用途地域＋最寄駅（乗降人員）</title>
+  <style>
+    :root { color-scheme: light dark; }
+    body { font-family: system-ui, -apple-system, "Segoe UI", Roboto, "Hiragino Sans", "Noto Sans JP", sans-serif; margin: 24px; }
+    h1 { margin: 0 0 8px; }
+    .muted { color: #666; font-size: 12px; }
+    .card { border: 1px solid #ccc; border-radius: 12px; padding: 16px; max-width: 1100px; }
+    .row { display: flex; flex-wrap: wrap; gap: 12px; align-items: end; }
+    label { display:block; font-size: 12px; margin-bottom: 4px; }
+    input { padding: 8px; border-radius: 8px; border: 1px solid #bbb; min-width: 160px; }
+    input[type="number"] { width: 180px; }
+    button { padding: 10px 16px; border: 0; border-radius: 10px; cursor: pointer; }
+    button.primary { background: #2563eb; color: white; }
+    .grid { display: grid; grid-template-columns: 1fr; gap: 12px; margin-top: 12px; }
+    @media (min-width: 900px) { .grid { grid-template-columns: 1fr 1fr; } }
+    .panel { border: 1px solid #ddd; border-radius: 10px; padding: 12px; }
+    .kv { display: grid; grid-template-columns: 160px 1fr; gap: 6px 8px; }
+    .warn { color: #b45309; }
+    .ok { color: #059669; }
+    .mono { font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; }
+    table { border-collapse: collapse; width: 100%; }
+    th, td { border-bottom: 1px solid #ddd; padding: 8px; text-align: left; }
+    th { background: rgba(37,99,235,.08); }
+    .right { text-align: right; }
+    .chips { display:flex; gap:.5rem; flex-wrap:wrap; margin-top:6px; }
+    .chip { padding:4px 8px; border-radius: 999px; background: rgba(0,0,0,.07); cursor: pointer; }
+    details { margin-top: 10px; }
+    .spinner { display:inline-block; width:1em; height:1em; border:2px solid #999; border-top-color:transparent; border-radius:50%; animation:spin 0.9s linear infinite; vertical-align:middle; }
+    @keyframes spin { to { transform: rotate(360deg); } }
+  </style>
+
+  <!-- 依存スクリプト -->
+  <script src="/app/js/zoning.js"></script>
+  <script src="/app/js/valuation-features.js"></script>
+</head>
+<body>
+  <h1>統合チェック：用途地域＋最寄駅（乗降人員）</h1>
+  <p class="muted">
+    データ：
+    <span class="mono">/app/datasets/zoning/hiroshima/A29_2019_34.geojson</span> ／
+    <span class="mono">/app/datasets/rail/s12/hiroshima/stations_with_ridership.geojson</span><br>
+    使い方：座標を入れて「この地点で確認」。用途地域（名称／建蔽率／容積率）と最寄駅（距離・2022乗降人員）を表示します。
+  </p>
+
+  <div class="card">
+    <div class="row">
+      <div>
+        <label>経度（lon）</label>
+        <input id="lon" type="number" step="0.000001" placeholder="132.452300" />
+      </div>
+      <div>
+        <label>緯度（lat）</label>
+        <input id="lat" type="number" step="0.000001" placeholder="34.392900" />
+      </div>
+      <div>
+        <label>最寄駅 件数 k</label>
+        <input id="k" type="number" min="1" max="10" value="3" />
+      </div>
+      <div>
+        <label>距離上限（m）</label>
+        <input id="maxm" type="number" min="100" step="100" value="20000" />
+      </div>
+      <div>
+        <button id="btn" class="primary">この地点で確認</button>
+      </div>
+    </div>
+
+    <div class="chips">
+      <span class="chip" data-lon="132.4523" data-lat="34.3929">広島中心（平和記念公園付近）</span>
+      <span class="chip" data-lon="132.4596" data-lat="34.4089">広島駅付近</span>
+      <span class="chip" data-lon="132.4547" data-lat="34.3759">紙屋町付近</span>
+    </div>
+
+    <div id="status" class="muted"></div>
+
+    <div class="grid">
+      <div class="panel">
+        <h3>用途地域（A29）</h3>
+        <div id="zoningBox" class="kv"></div>
+      </div>
+      <div class="panel">
+        <h3>最寄駅（2022乗降人員つき）</h3>
+        <div id="stationsBox"></div>
+      </div>
+    </div>
+
+    <details>
+      <summary>技術メモ / 免責</summary>
+      <ul>
+        <li>用途地域はGeoJSON（簡易変換）に対するPIPで判定。境界付近は誤差の可能性あり。</li>
+        <li>駅はN02駅ポイントにS12_2022を結合済み。距離はハバーサイン。</li>
+        <li>本ページは検証用UIです。最終UIではフォーム入力や地図と統合できます。</li>
+      </ul>
+    </details>
+  </div>
+
+  <script>
+    const $ = (s)=>document.querySelector(s);
+    const statusEl = $("#status");
+    const zoningBox = $("#zoningBox");
+    const stationsBox = $("#stationsBox");
+
+    // プリセット座標
+    document.querySelectorAll(".chip").forEach(el=>{
+      el.addEventListener("click", ()=>{
+        $("#lon").value = el.getAttribute("data-lon");
+        $("#lat").value = el.getAttribute("data-lat");
+      });
+    });
+
+    // 初期ロード
+    (async () => {
+      statusEl.innerHTML = '<span class="spinner"></span> データ準備中…';
+      try {
+        await ValuationFeatures.load();
+        statusEl.textContent = '準備OK：用途地域＋駅データ読み込み済み';
+      } catch (e) {
+        statusEl.textContent = '初期化に失敗: ' + e.message;
+      }
+    })();
+
+    // 実行
+    $("#btn").addEventListener("click", async ()=>{
+      const lon = parseFloat($("#lon").value);
+      const lat = parseFloat($("#lat").value);
+      const k = Math.max(1, parseInt($("#k").value || "3", 10));
+      const maxm = Math.max(1, parseInt($("#maxm").value || "20000", 10));
+
+      if (!isFinite(lon) || !isFinite(lat)){
+        statusEl.textContent = "経度・緯度を数値で入力してください。";
+        return;
+      }
+
+      statusEl.innerHTML = '<span class="spinner"></span> 計算中…';
+      try {
+        const out = await ValuationFeatures.enrich(lon, lat, { k, maxMeters: maxm });
+        renderZoning(out.zoning);
+        renderStations(out.stations);
+        statusEl.textContent = '完了';
+      } catch (e) {
+        statusEl.textContent = "計算に失敗: " + e.message;
+      }
+    });
+
+    function renderZoning(z){
+      if (!z){
+        zoningBox.innerHTML = '<div class="warn">判定できませんでした（境界付近またはデータ未整備の可能性）。</div>';
+        return;
+      }
+      const bcr = z.bcr==null ? '不明' : (z.bcr + '%');
+      const far = z.far==null ? '不明' : (z.far + '%');
+      const city = esc(z.props?.A29_003 ?? '');
+      const code = esc(z.props?.A29_004 ?? '');
+      zoningBox.innerHTML = `
+        <div>用途地域名</div><div><b>${esc(z.name || '(名称なし)')}</b></div>
+        <div>建蔽率</div><div>${bcr}</div>
+        <div>容積率</div><div>${far}</div>
+        <div>市区町村</div><div>${city}</div>
+        <div>コード</div><div class="mono">${code}</div>
+      `;
+    }
+
+    function renderStations(list){
+      if (!list || list.length===0){
+        stationsBox.innerHTML = '<div class="warn">該当なし（距離上限を広げて再検索をお試しください）。</div>';
+        return;
+      }
+      const rows = list.map(x=>{
+        const rid = (x.ridership==null || x.ridership===-1) ? '—' : Number(x.ridership).toLocaleString();
+        return `<tr>
+          <td>${esc(x.name||'')}</td>
+          <td>${esc(x.line||'')}</td>
+          <td>${esc(x.operator||'')}</td>
+          <td class="right">${x.dist_m.toLocaleString()}</td>
+          <td class="right">${rid}</td>
+          <td class="mono">${x.lon.toFixed(6)}, ${x.lat.toFixed(6)}</td>
+        </tr>`;
+      }).join('');
+      stationsBox.innerHTML = `
+        <table>
+          <thead>
+            <tr>
+              <th>駅名</th><th>路線名</th><th>事業者</th>
+              <th class="right">距離(m)</th><th class="right">乗降人員(2022/日)</th>
+              <th class="mono">座標 [lon, lat]</th>
+            </tr>
+          </thead>
+          <tbody>${rows}</tbody>
+        </table>`;
+    }
+
+    function esc(s){ return String(s).replace(/[&<>"']/g,c=>({ '&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;' }[c])); }
+  </script>
+</body>
+</html>
