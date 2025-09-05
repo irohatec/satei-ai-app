@@ -1,17 +1,15 @@
 <!--
   File: public/app/tools/tsunami-pip.html
-  機能: 津波浸水想定（A40-16, 広島）GeoJSON
-        /app/datasets/hazard/tsunami/hiroshima/tsunami_2016_inundation.geojson
-        を読み込み、任意座標 [lon, lat] に対して PIP（Point-in-Polygon）判定。
-        該当ポリゴンの属性（A40_003=浸水深区分 など）を一覧表示（地図なし・検証用）。
-  注意: fetch を使うため file:// 直開き不可。HTTP配信（プレビュー／本番）で確認してください。
+  機能: 津波浸水想定（A40-16, 広島）の .geojson.gz を読み込み、
+        任意座標 [lon, lat] に対して PIP 判定（地図なし・検証用）。
+  注意: GitHubの25MB制限回避のため、gzip圧縮ファイルをfetch→ブラウザで解凍します。
 -->
 <!DOCTYPE html>
 <html lang="ja">
 <head>
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width,initial-scale=1" />
-  <title>津波ハザード PIP チェック（広島・検証用）</title>
+  <title>津波ハザード PIP チェック（広島・検証用 / gzip対応）</title>
   <style>
     :root { color-scheme: light dark; }
     body { font-family: system-ui, -apple-system, "Segoe UI", Roboto, "Hiragino Sans", "Noto Sans JP", sans-serif; margin: 24px; }
@@ -39,11 +37,13 @@
     .chip { padding:4px 8px; border-radius: 999px; background: rgba(0,0,0,.07); cursor: pointer; }
     details { margin-top: 10px; }
   </style>
+  <!-- ブラウザでgzipを解凍するためのPako（CDN） -->
+  <script src="https://cdn.jsdelivr.net/npm/pako@2.1.0/dist/pako.min.js"></script>
 </head>
 <body>
-  <h1>津波ハザード PIP チェック（広島・検証用）</h1>
+  <h1>津波ハザード PIP チェック（広島・検証用 / gzip対応）</h1>
   <p class="muted">
-    データ: <span class="mono">/app/datasets/hazard/tsunami/hiroshima/tsunami_2016_inundation.geojson</span><br>
+    データ: <span class="mono">/app/datasets/hazard/tsunami/hiroshima/tsunami_2016_inundation.geojson.gz</span><br>
     使い方: 経度・緯度を入れて「判定」。該当する津波浸水想定区域（2016）の属性を一覧表示します。
   </p>
 
@@ -90,23 +90,22 @@
     <details>
       <summary>技術メモ / 免責</summary>
       <ul>
-        <li>本ページは検証用UIです。行政判断等には必ず公式ハザードマップの原典をご確認ください。</li>
-        <li>座標は GeoJSON 標準の [lon, lat]（緯度経度）。</li>
-        <li>大量データのため初回ロードがやや重くなります。軽量化は別ステップで対応できます。</li>
+        <li>このページは検証用UIです。行政判断等には原典のハザードマップをご確認ください。</li>
+        <li>25MB制限回避のため .geojson.gz をクライアント解凍しています。</li>
       </ul>
     </details>
   </div>
 
   <script>
-    const DATA_URL = "/app/datasets/hazard/tsunami/hiroshima/tsunami_2016_inundation.geojson";
-    const GRID_DEG = 0.02; // ≒2km グリッド
+    const DATA_URL_GZ = "/app/datasets/hazard/tsunami/hiroshima/tsunami_2016_inundation.geojson.gz";
+    const FALLBACK_JSON = "/app/datasets/hazard/tsunami/hiroshima/tsunami_2016_inundation.geojson"; // 置かない場合は404でもOK
+    const GRID_DEG = 0.02;
 
     const $ = (s)=>document.querySelector(s);
     const statusEl = $("#status");
     const tableWrap = $("#tableWrap");
     const summaryEl = $("#summary");
 
-    // プリセット座標
     document.querySelectorAll(".chip").forEach(el=>{
       el.addEventListener("click", ()=>{
         $("#lon").value = el.getAttribute("data-lon");
@@ -114,44 +113,48 @@
       });
     });
 
-    // ---- 読み込み＆索引化 ----
+    async function loadGeoJSON(){
+      statusEl.innerHTML = '<span class="spinner"></span> データ読み込み中（gzip展開）…';
+      try {
+        // 1) .gz を試す
+        const r = await fetch(DATA_URL_GZ, { cache:"force-cache" });
+        if (r.ok) {
+          const arr = new Uint8Array(await r.arrayBuffer());
+          const text = new TextDecoder("utf-8").decode(pako.ungzip(arr));
+          return JSON.parse(text);
+        }
+        // 2) フォールバック（未設置なら404でOK）
+        const r2 = await fetch(FALLBACK_JSON, { cache:"force-cache" });
+        if (!r2.ok) throw new Error("データ取得に失敗: HTTP " + r2.status);
+        return await r2.json();
+      } catch (e) {
+        statusEl.textContent = "読み込み失敗: " + e.message;
+        throw e;
+      }
+    }
+
     const Tsunami = {
       loaded:false,
-      items:[],       // {bbox:[minX,minY,maxX,maxY], polys:[ [outer, hole...], ... ], props}
-      grid:new Map(), // "gy_gx" -> indices
+      items:[],
+      grid:new Map(),
       async load(){
         if (this.loaded) return this.items.length;
-        statusEl.innerHTML = '<span class="spinner"></span> データ読み込み中…（初回のみ）';
-        const res = await fetch(DATA_URL, { cache:"force-cache" });
-        if (!res.ok) throw new Error("HTTP " + res.status);
-        const gj = await res.json();
+        const gj = await loadGeoJSON();
         const feats = Array.isArray(gj.features) ? gj.features : [];
-
         for (const f of feats){
           const g = f.geometry;
           if (!g || (g.type!=="Polygon" && g.type!=="MultiPolygon")) continue;
           const polys = [];
-          if (g.type === "Polygon") {
-            polys.push(normalizePolygon(g.coordinates));
-          } else {
-            for (const p of g.coordinates) polys.push(normalizePolygon(p));
-          }
+          if (g.type === "Polygon") polys.push(normalizePolygon(g.coordinates));
+          else for (const p of g.coordinates) polys.push(normalizePolygon(p));
           const bbox = bboxOfPolys(polys);
           const p = f.properties || {};
           const rec = {
-            bbox,
-            polys,
-            // 主に使う属性（必要なら増やす）
-            props: {
-              A40_001: p.A40_001 ?? "",   // 都道府県名（広島県）
-              A40_002: p.A40_002 ?? "",   // 都道府県コード（34）
-              A40_003: p.A40_003 ?? ""    // 浸水深区分（文字列）
-            }
+            bbox, polys,
+            props: { A40_001: p.A40_001 ?? "", A40_002: p.A40_002 ?? "", A40_003: p.A40_003 ?? "" }
           };
           const idx = this.items.length;
           this.items.push(rec);
-
-          // グリッド登録：BBox が跨るセルすべて
           const gx0 = gridX(bbox[0]), gy0 = gridY(bbox[1]);
           const gx1 = gridX(bbox[2]), gy1 = gridY(bbox[3]);
           for (let gy=gy0; gy<=gy1; gy++){
@@ -162,7 +165,6 @@
             }
           }
         }
-
         this.loaded = true;
         statusEl.textContent = `読み込み完了：${this.items.length.toLocaleString()} ポリゴン`;
         return this.items.length;
@@ -170,9 +172,7 @@
       queryPoint(lon, lat, limit=50){
         if (!this.loaded) throw new Error("Tsunami.load() を先に実行してください。");
         const gx0 = gridX(lon), gy0 = gridY(lat);
-        const visited = new Set();
-        const candIdx = new Set();
-
+        const visited = new Set(), candIdx = new Set();
         for (let r=0; r<=2; r++){
           for (let dy=-r; dy<=r; dy++){
             for (let dx=-r; dx<=r; dx++){
@@ -185,7 +185,6 @@
             }
           }
         }
-
         const hits = [];
         for (const i of candIdx){
           const it = this.items[i];
@@ -199,7 +198,7 @@
       }
     };
 
-    // ---- 幾何ユーティリティ ----
+    // 幾何ユーティリティ
     function normalizePolygon(coords){
       const fix = (ring)=>{
         if (!ring || ring.length<4) return [];
@@ -210,20 +209,15 @@
       };
       return (coords||[]).map(fix).filter(r=>r.length>=4);
     }
-    function bboxOfRing(ring){
-      let minX=Infinity, minY=Infinity, maxX=-Infinity, maxY=-Infinity;
-      for (const p of ring){
-        const x=p[0], y=p[1];
-        if (x<minX) minX=x; if (y<minY) minY=y;
-        if (x>maxX) maxX=x; if (y>maxY) maxY=y;
-      }
+    function bboxOfRing(r){ let minX=Infinity, minY=Infinity, maxX=-Infinity, maxY=-Infinity;
+      for (const p of r){ const x=p[0], y=p[1]; if (x<minX) minX=x; if (y<minY) minY=y; if (x>maxX) maxX=x; if (y>maxY) maxY=y; }
       return [minX,minY,maxX,maxY];
     }
     function bboxOfPolys(polys){
       let minX=Infinity, minY=Infinity, maxX=-Infinity, maxY=-Infinity;
       for (const poly of polys){
         for (let i=0;i<poly.length;i++){
-          const b = bboxOfRing(poly[i]);
+          const b=bboxOfRing(poly[i]);
           if (b[0]<minX) minX=b[0];
           if (b[1]<minY) minY=b[1];
           if (b[2]>maxX) maxX=b[2];
@@ -233,56 +227,25 @@
       return [minX,minY,maxX,maxY];
     }
     function inBBox(x,y,b){ return x>=b[0] && x<=b[2] && y>=b[1] && y<=b[3]; }
-
-    // Ray casting（偶奇ルール）
-    function pointInRing(x, y, ring){
-      let inside=false;
-      for (let i=0, j=ring.length-1; i<ring.length; j=i++){
-        const xi=ring[i][0], yi=ring[i][1];
-        const xj=ring[j][0], yj=ring[j][1];
-        const intersect = ((yi>y)!==(yj>y)) && (x < (xj-xi)*(y-yi)/((yj-yi)||1e-12) + xi);
-        if (intersect) inside = !inside;
-      }
-      return inside;
+    function pointInRing(x,y,ring){ let inside=false;
+      for (let i=0,j=ring.length-1;i<ring.length;j=i++){
+        const xi=ring[i][0], yi=ring[i][1], xj=ring[j][0], yj=ring[j][1];
+        const intersect=((yi>y)!==(yj>y)) && (x < (xj-xi)*(y-yi)/((yj-yi)||1e-12) + xi);
+        if (intersect) inside=!inside;
+      } return inside;
     }
-    function pointInPolygon(x, y, poly){
+    function pointInPolygon(x,y,poly){
       if (!poly || poly.length===0) return false;
-      if (!pointInRing(x, y, poly[0])) return false;   // 外環
-      for (let i=1;i<poly.length;i++){                  // 穴
-        if (pointInRing(x, y, poly[i])) return false;
-      }
+      if (!pointInRing(x,y,poly[0])) return false;
+      for (let i=1;i<poly.length;i++){ if (pointInRing(x,y,poly[i])) return false; }
       return true;
     }
-    function pointInPolys(x, y, polys){
-      for (const poly of polys){ if (pointInPolygon(x,y,poly)) return true; }
-      return false;
-    }
-
-    // グリッド
+    function pointInPolys(x,y,polys){ for (const poly of polys){ if (pointInPolygon(x,y,poly)) return true; } return false; }
     function gridX(lon){ return Math.floor(lon / GRID_DEG); }
     function gridY(lat){ return Math.floor(lat / GRID_DEG); }
+    function esc(s){ return String(s).replace(/[&<>"']/g,c=>({ '&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;' }[c])); }
 
-    // 浸水深区分テキストから“代表下限値[m]”と正規ラベルを推定
-    // 例: 「0.01m以上 ～ 0.3m未満」→ {min:0.01, max:0.3, label:"0.01–0.3m"}
-    function depthClassify(src){
-      if (!src) return {min:0, max:0, label:null};
-      const s = String(src).replace(/〜/g,'～').replace(/\s/g,'').toLowerCase();
-      const m_rng = s.match(/(\d+(?:\.\d+)?)m?以上?～(\d+(?:\.\d+)?)m?未満?/);
-      if (m_rng){
-        const a = parseFloat(m_rng[1]), b = parseFloat(m_rng[2]);
-        const min = Math.min(a,b), max = Math.max(a,b);
-        return {min, max, label: `${min}–${max}m`};
-      }
-      const m_ge = s.match(/(\d+(?:\.\d+)?)m?以上/);
-      if (m_ge) { const v=parseFloat(m_ge[1]); return {min:v, max:Infinity, label:`${v}m以上`}; }
-      const m_lt = s.match(/(\d+(?:\.\d+)?)m?未満/);
-      if (m_lt) { const v=parseFloat(m_lt[1]); return {min:0, max:v, label:`0–${v}m`}; }
-      const m_eq = s.match(/(\d+(?:\.\d+)?)m?/);
-      if (m_eq) { const v=parseFloat(m_eq[1]); return {min:v, max:v, label:`${v}m`}; }
-      return {min:0, max:0, label:null};
-    }
-
-    // ---- 初期ロード ----
+    // 初期ロード
     (async ()=>{
       try{
         await Tsunami.load();
@@ -291,7 +254,7 @@
       }
     })();
 
-    // ---- 実行 ----
+    // 実行
     $("#btn").addEventListener("click", ()=>{
       const lon = parseFloat($("#lon").value);
       const lat = parseFloat($("#lat").value);
@@ -307,79 +270,42 @@
       }, 10);
     });
 
-    // ---- 表示 ----
     function renderResults(lon, lat, hits){
       statusEl.textContent = hits.length ? `該当 ${hits.length} 件（表示上限あり）` : "該当なし";
-
-      // サマリー（最深クラス推定）
       let best = {min:0, max:0, label:null};
       const rows = hits.map(h=>{
         const p = h.props;
         const cls = depthClassify(p.A40_003);
         if (cls.label){
-          if (cls.max === Infinity || cls.max > best.max || (best.max !== Infinity && cls.min > best.min)) {
-            best = cls;
-          }
+          if (cls.max === Infinity || cls.max > best.max || (best.max !== Infinity && cls.min > best.min)) best = cls;
         }
-        return {
-          pref: p.A40_001 || "",
-          code: p.A40_002 || "",
-          depth: p.A40_003 || ""
-        };
+        return { pref: p.A40_001 || "", code: p.A40_002 || "", depth: p.A40_003 || "" };
       });
-
       summaryEl.innerHTML = `
         <div class="mono">座標 [lon, lat] = ${lon.toFixed(6)}, ${lat.toFixed(6)}</div>
-        <ul>
-          <li>該当ポリゴン数：<b>${hits.length}</b></li>
-          <li>最深クラス（推定）：<b>${best.label || "不明"}</b></li>
-        </ul>
-      `;
-
+        <ul><li>該当ポリゴン数：<b>${hits.length}</b></li><li>最深クラス（推定）：<b>${best.label || "不明"}</b></li></ul>`;
       if (rows.length === 0){ tableWrap.innerHTML = ""; return; }
-      const thead = `
-        <thead>
-          <tr>
-            <th>都道府県</th>
-            <th>県コード</th>
-            <th>浸水深区分（A40_003 原文）</th>
-          </tr>
-        </thead>`;
-      const tbody = rows.map(r=>`
-        <tr>
-          <td>${esc(r.pref)}</td>
-          <td class="mono">${esc(r.code)}</td>
-          <td>${esc(r.depth)}</td>
-        </tr>
-      `).join("");
+      const thead = `<thead><tr><th>都道府県</th><th>県コード</th><th>浸水深区分（A40_003 原文）</th></tr></thead>`;
+      const tbody = rows.map(r=>`<tr><td>${esc(r.pref)}</td><td class="mono">${esc(r.code)}</td><td>${esc(r.depth)}</td></tr>`).join("");
       tableWrap.innerHTML = `<table>${thead}<tbody>${tbody}</tbody></table>`;
-
-      // エクスポート
       $("#btnExport").onclick = ()=>{
-        const gj = {
-          type: "FeatureCollection",
-          features: hits.map(h=>({
-            type:"Feature",
-            properties: h.props,
-            geometry: polysToGeometry(h.polys)
-          }))
-        };
+        const gj = { type:"FeatureCollection", features: hits.map(h=>({ type:"Feature", properties: h.props, geometry: polysToGeometry(h.polys) })) };
         const blob = new Blob([JSON.stringify(gj)], {type:"application/json"});
-        const url = URL.createObjectURL(blob);
-        const a = document.createElement("a");
-        a.href = url;
-        a.download = `tsunami_hits_${lon.toFixed(6)}_${lat.toFixed(6)}.geojson`;
-        a.click();
-        URL.revokeObjectURL(url);
+        const url = URL.createObjectURL(blob); const a = document.createElement("a");
+        a.href = url; a.download = `tsunami_hits_${lon.toFixed(6)}_${lat.toFixed(6)}.geojson`; a.click(); URL.revokeObjectURL(url);
       };
     }
-
-    function polysToGeometry(polys){
-      if (!polys || polys.length===0) return null;
-      if (polys.length===1){ return { type:"Polygon", coordinates: polys[0] }; }
-      return { type:"MultiPolygon", coordinates: polys };
+    function polysToGeometry(polys){ if (!polys || polys.length===0) return null; if (polys.length===1) return {type:"Polygon",coordinates:polys[0]}; return {type:"MultiPolygon",coordinates:polys}; }
+    function depthClassify(src){
+      if (!src) return {min:0, max:0, label:null};
+      const s = String(src).replace(/〜/g,'～').replace(/\s/g,'').toLowerCase();
+      const m_rng = s.match(/(\d+(?:\.\d+)?)m?以上?～(\d+(?:\.\d+)?)m?未満?/);
+      if (m_rng){ const a=parseFloat(m_rng[1]), b=parseFloat(m_rng[2]); const min=Math.min(a,b), max=Math.max(a,b); return {min,max,label:`${min}–${max}m`}; }
+      const m_ge = s.match(/(\d+(?:\.\d+)?)m?以上/); if (m_ge){ const v=parseFloat(m_ge[1]); return {min:v, max:Infinity, label:`${v}m以上`}; }
+      const m_lt = s.match(/(\d+(?:\.\d+)?)m?未満/); if (m_lt){ const v=parseFloat(m_lt[1]); return {min:0, max:v, label:`0–${v}m`}; }
+      const m_eq = s.match(/(\d+(?:\.\d+)?)m?/); if (m_eq){ const v=parseFloat(m_eq[1]); return {min:v, max:v, label:`${v}m`}; }
+      return {min:0, max:0, label:null};
     }
-    function esc(s){ return String(s).replace(/[&<>"']/g,c=>({ '&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;' }[c])); }
   </script>
 </body>
 </html>
